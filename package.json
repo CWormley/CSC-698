@@ -1,15 +1,21 @@
 {
-  "name": "CSC-698",
+  "name": "csc-698",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "pnpm -r test",
     "dev:mobile": "pnpm --filter mobile start",
-    "dev:server": "pnpm --filter server dev",
-    "build": "pnpm -r build"
+    "dev:service": "pnpm --filter service start",
+    "build": "pnpm -r build",
+    "build:common": "pnpm --filter common build",
+    "typecheck": "pnpm -r typecheck"
   },
   "keywords": [],
   "author": "",
-  "license": "ISC"
+  "license": "ISC",
+  "devDependencies": {
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  }
 }

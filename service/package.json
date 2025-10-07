@@ -6,6 +6,9 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
+    "dev": "node index.js",
+    "build": "echo \"No build needed for service\"",
+    "typecheck": "echo \"No TypeScript in service\"", 
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
