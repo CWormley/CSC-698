@@ -1,6 +1,9 @@
 # CSC-698
-**Project Title**
-Personalized AI Motivator and Life Coach
+**Personalized AI Motivator and Life Coach**
+
+> 🚀 **Quick Start**: New to the project? Check out [SETUP.md](./SETUP.md) for complete installation instructions.
+
+## Project Overview
 
 **Problem Statement**
 We often have personal goals that we want to work towards, but struggle to find the personal motivation to take the first step. It is helpful to have someone to encourage you and hold you accountable. We often see this with personal trainers and life coaches. However, those services can be very expensive and are not accessible to all individuals. The struggle to find proper motivation is a huge barrier for someone to make the effort and self improve.
@@ -22,14 +25,42 @@ User: Hey AI Trainer, last night I watched a cooking show, and I would like to t
 
 AI “ Wow, im so happy to hear that. You're doing great. I am so proud of you. Let's set your plan up for this week. This week, let's try to hit 175 steps a day, and let's try to go to the gym three times. You had mentioned liking pasta in a previous chat, so I created an easy beginner-friendly recipe for pasta that you can cook on Monday, since that's your less-busy day. For Wednesday and Thursday, your step count has been reduced to 100 steps. Let me know if you would like to change anything about this plan.
 
-**Technical Approach**
- AI Model: OpenAI GPT-4o-mini (pre-trained model)
- Memory: Qdrant (user goals and key long term info)
- Orchestration: LangChain
- Frontend: React Native mobile app
- Hosting: AWS
- Backend: Node.js/Express
- Database: PostgreSQL
+## Technical Architecture
+
+### Tech Stack
+- **AI Model**: OpenAI GPT-4o-mini (pre-trained model)
+- **Vector Memory**: Qdrant (user goals and long-term context)
+- **AI Orchestration**: LangChain
+- **Frontend**: React Native mobile app
+- **Backend**: Node.js/Express API
+- **Database**: PostgreSQL
+- **Hosting**: AWS
+- **Package Management**: pnpm workspaces
+
+### Project Structure
+```
+CSC-698/
+├── mobile/          # React Native app
+├── service/         # Express.js API backend  
+├── common/          # Shared TypeScript types and utilities
+├── SETUP.md         # Development environment setup
+└── README.md        # This file
+```
+
+### Development Commands
+```bash
+# Install dependencies
+pnpm install
+
+# Start development servers
+pnpm dev:mobile      # React Native Metro
+pnpm dev:service     # Express API server
+
+# Build and test
+pnpm build          # Build all packages
+pnpm typecheck      # TypeScript validation
+pnpm test           # Run test suites
+```
 
 **Team Roles and Responsibilities**
 Claudia (Team Lead) : Facilitate meetings and coordinate schedules. Handle overall development and software stack management. Focus on backend and AI integration.
@@ -49,3 +80,22 @@ We will deliver a demo of our mobile app in a simulator or test environment. We 
 - Users shall receive communication with AI following up on previous conversations.
 - AI shall have memory of previous conversations.
 - AI shall have memory of current goals.
+
+## Getting Started
+
+### For New Developers
+1. **Setup Environment**: Follow the complete [SETUP.md](./SETUP.md) guide
+2. **Install Dependencies**: Run `pnpm install` in the project root
+3. **Start Development**: Use `pnpm dev:service` and `pnpm dev:mobile` 
+4. **Review Architecture**: Examine the `/mobile`, `/service`, and `/common` packages
+
+### For Contributors
+- Follow the Git workflow established by the team
+- Ensure all TypeScript checks pass: `pnpm typecheck`
+- Test your changes before submitting PRs
+- Document any new environment variables or setup steps
+
+### Package-Specific Documentation
+- **Mobile App**: See [mobile/README.md](./mobile/README.md) for React Native specific setup
+- **API Service**: See [service/README.md](./service/README.md) for backend configuration  
+- **Shared Code**: See [common/README.md](./common/README.md) for shared types and utilities
