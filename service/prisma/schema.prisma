@@ -1,0 +1,64 @@
+// This is your Prisma schema file
+// Learn more: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- MODELS ----------
+
+model User {
+  id         String      @id @default(cuid())
+  email      String      @unique
+  name       String?
+  createdAt  DateTime    @default(now())
+  messages   Message[]
+  reminders  Reminder[]
+  aiMemory   AIMemory?   // 1:1 relation with AI memory
+}
+
+model Message {
+  id        String   @id @default(uuid())
+  text      String
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+}
+
+model Reminder {
+  id          String      @id @default(cuid())
+  user        User        @relation(fields: [userId], references: [id])
+  userId      String
+  title       String
+  dueDate     DateTime
+  completed   Boolean     @default(false)
+  repeatType  RepeatType? // Enum for frequency (daily, weekly, etc.)
+  repeatUntil DateTime?   // Optional end date for repeating reminders
+  interval    Int?        // Optional interval (e.g., every 2 days)
+}
+
+model AIMemory {
+  id          String   @id @default(cuid())
+  user        User     @relation(fields: [userId], references: [id])
+  userId      String   @unique  // Ensures one memory per user
+  summary     String?
+  goals       Json?
+  preferences Json?
+  lastSync    DateTime @default(now())
+}
+
+// ---------- ENUMS ----------
+
+enum RepeatType {
+  DAILY
+  WEEKLY
+  MONTHLY
+  YEARLY
+  CUSTOM
+}

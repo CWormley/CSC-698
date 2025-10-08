@@ -8,7 +8,7 @@
     "start": "node index.js",
     "dev": "node index.js",
     "build": "echo \"No build needed for service\"",
-    "typecheck": "echo \"No TypeScript in service\"", 
+    "typecheck": "echo \"No TypeScript in service\"",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -16,9 +16,13 @@
   "license": "ISC",
   "packageManager": "pnpm@10.18.1",
   "dependencies": {
+    "@prisma/client": "^6.17.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
     "openai": "^6.2.0"
+  },
+  "devDependencies": {
+    "prisma": "^6.17.0"
   }
 }
