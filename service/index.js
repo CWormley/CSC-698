@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import { disconnect } from "./db/index.js";
+import { getSwaggerSpecs, createSwaggerMiddleware, swaggerUi, regenerateSwaggerDocs } from "./swagger.js";
 
 // Import route handlers
 import userRoutes from "./routes/users.js";
@@ -18,11 +19,42 @@ app.use(express.json());
 // Health check route
 app.get("/", (req, res) => res.send("AI Life Coach API Server running ✅"));
 
-// API routes
+// API routes - REGISTER THESE FIRST
 app.use("/api/users", userRoutes);
 app.use("/api/messages", messageRoutes);
 app.use("/api/reminders", reminderRoutes);
 app.use("/api/ai-memory", aiMemoryRoutes);
+
+// Auto-updating Swagger middleware (after routes are registered)
+app.use(createSwaggerMiddleware(app));
+
+// Swagger documentation setup
+let swaggerSetup;
+
+// Swagger documentation routes
+app.use('/api-docs', swaggerUi.serve);
+app.get('/api-docs', async (req, res, next) => {
+  try {
+    // Always generate fresh specs to ensure routes are captured
+    const specs = await getSwaggerSpecs(app);
+    const setup = swaggerUi.setup(specs, {
+      explorer: true,
+      customCss: '.swagger-ui .topbar { display: none }',
+      customSiteTitle: "AI Life Coach API Documentation"
+    });
+    setup(req, res, next);
+  } catch (error) {
+    console.error('Error generating Swagger docs:', error);
+    return res.status(500).send('Failed to generate API documentation');
+  }
+});
+
+// Force regenerate docs endpoint (useful for development)
+app.post('/api-docs/regenerate', (req, res) => {
+  regenerateSwaggerDocs();
+  swaggerSetup = null; // Reset setup to force regeneration
+  res.json({ success: true, message: 'Documentation will be regenerated on next request' });
+});
 
 // Error handling middleware
 app.use((error, req, res, next) => {
