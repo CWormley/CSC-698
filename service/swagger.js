@@ -49,22 +49,62 @@ export async function getSwaggerSpecs(app) {
 }
 
 /**
+ * Generate fallback servers configuration
+ */
+function generateFallbackServers() {
+  const servers = [];
+  
+  // Production/deployed server
+  if (process.env.API_BASE_URL) {
+    servers.push({
+      url: process.env.API_BASE_URL,
+      description: process.env.NODE_ENV === 'production' ? 'Production server' : 'Deployed server',
+    });
+  }
+  
+  // Staging server
+  if (process.env.STAGING_API_URL) {
+    servers.push({
+      url: process.env.STAGING_API_URL,
+      description: 'Staging server',
+    });
+  }
+  
+  // Local development server
+  const port = process.env.PORT || 5000;
+  const localUrl = `http://localhost:${port}`;
+  
+  // Only add localhost if we're in development or no other servers are defined
+  if (process.env.NODE_ENV !== 'production' || servers.length === 0) {
+    servers.push({
+      url: localUrl,
+      description: 'Development server',
+    });
+  }
+  
+  // Fallback if no servers defined
+  if (servers.length === 0) {
+    servers.push({
+      url: localUrl,
+      description: 'Local server',
+    });
+  }
+  
+  return servers;
+}
+
+/**
  * Fallback Swagger specs if auto-generation fails
  */
 function getFallbackSpecs() {
   return {
     openapi: '3.0.0',
     info: {
-      title: 'AI Life Coach API',
-      version: '1.0.0',
+      title: process.env.API_TITLE || 'AI Life Coach API',
+      version: process.env.API_VERSION || '1.0.0',
       description: 'API documentation (fallback mode - auto-generation failed)',
     },
-    servers: [
-      {
-        url: 'http://localhost:3000',
-        description: 'Development server',
-      },
-    ],
+    servers: generateFallbackServers(),
     paths: {
       '/api/users': {
         get: {

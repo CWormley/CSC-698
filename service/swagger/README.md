@@ -90,17 +90,75 @@ service/
 
 ## 🔧 Configuration
 
+### Environment Variables
+
+The system uses environment variables to configure server URLs and API metadata:
+
+```bash
+# Server Configuration
+PORT=5000                              # Server port (default: 5000)
+NODE_ENV=development                   # Environment (development/staging/production)
+
+# API Documentation
+API_TITLE="AI Life Coach API"          # API title in documentation
+API_VERSION="1.0.0"                   # API version
+API_DESCRIPTION="Your API description" # API description
+
+# Server URLs (for different environments)
+API_BASE_URL=https://api.yourapp.com   # Production/deployed URL
+STAGING_API_URL=https://staging.com    # Staging URL (optional)
+```
+
+### Multi-Environment Support
+
+The documentation automatically configures server URLs based on your environment:
+
+**Local Development:**
+```bash
+# .env
+NODE_ENV=development
+PORT=5000
+# Result: Swagger shows http://localhost:5000
+```
+
+**Staging Deployment:**
+```bash
+# .env.staging  
+NODE_ENV=staging
+API_BASE_URL=https://staging-api.yourapp.com
+STAGING_API_URL=https://staging-api.yourapp.com
+# Result: Swagger shows both staging and local URLs
+```
+
+**Production Deployment:**
+```bash
+# .env.production
+NODE_ENV=production
+API_BASE_URL=https://api.yourapp.com
+# Result: Swagger shows production URL only
+```
+
+### Automatic Detection
+
 The system automatically detects:
 - Database models from Prisma schema
-- API routes from Express routers
+- API routes from Express routers  
 - Request/response structures
 - Field types and validations
+- Server URLs from environment
 
 ### Customization Options
 
 You can customize the documentation by:
 
-1. **Adding descriptions to Prisma fields:**
+1. **Environment Variables:**
+   ```bash
+   API_TITLE="My Custom API"
+   API_VERSION="2.0.0"
+   API_DESCRIPTION="Custom description"
+   ```
+
+2. **Adding descriptions to Prisma fields:**
    ```prisma
    model User {
      id    String @id @default(cuid()) // Auto-generates: "Unique identifier"
@@ -108,7 +166,7 @@ You can customize the documentation by:
    }
    ```
 
-2. **Using meaningful route paths:**
+3. **Using meaningful route paths:**
    ```javascript
    // Auto-generates good documentation
    router.get('/:id', handler);           // "Get user by ID"

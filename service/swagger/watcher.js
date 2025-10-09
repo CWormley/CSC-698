@@ -11,9 +11,11 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const __dirname = path.dirname(__dirname); // Go up one level from swagger/ to service/
 
-const SERVER_URL = 'http://localhost:5000';
+// Dynamic server URL configuration
+const PORT = process.env.PORT || 5000;
+const SERVER_URL = process.env.API_BASE_URL || `http://localhost:${PORT}`;
 const REGENERATE_ENDPOINT = `${SERVER_URL}/api-docs/regenerate`;
 
 // Files to watch for changes

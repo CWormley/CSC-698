@@ -6,13 +6,14 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "dev": "node index.js",
+    "dev": "NODE_ENV=development node index.js",
+    "prod": "NODE_ENV=production node index.js",
     "build": "echo \"No build needed for service\"",
     "typecheck": "echo \"No TypeScript in service\"",
     "test": "echo \"Error: no test specified\" && exit 1",
     "swagger:watch": "node swagger/watcher.js",
-    "swagger:regenerate": "curl -X POST http://localhost:5000/api-docs/regenerate",
-    "docs": "echo \"📖 Open http://localhost:5000/api-docs to view API documentation\""
+    "swagger:regenerate": "node -e \"const port=process.env.PORT||5000; const url=process.env.API_BASE_URL||'http://localhost:'+port; console.log('Regenerating docs at: '+url); require('child_process').exec('curl -X POST '+url+'/api-docs/regenerate', (e,o)=>console.log(o||e))\"",
+    "docs": "node -r dotenv/config -e \"const port=process.env.PORT||5000; const url=process.env.API_BASE_URL||'http://localhost:'+port; console.log('📖 Open '+url+'/api-docs to view API documentation')\""
   },
   "keywords": [],
   "author": "",

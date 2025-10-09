@@ -17,6 +17,51 @@ class SwaggerGenerator {
   }
 
   /**
+   * Generate server configurations based on environment
+   */
+  generateServers() {
+    const servers = [];
+    
+    // Production/deployed server
+    if (process.env.API_BASE_URL) {
+      servers.push({
+        url: process.env.API_BASE_URL,
+        description: process.env.NODE_ENV === 'production' ? 'Production server' : 'Deployed server',
+      });
+    }
+    
+    // Staging server
+    if (process.env.STAGING_API_URL) {
+      servers.push({
+        url: process.env.STAGING_API_URL,
+        description: 'Staging server',
+      });
+    }
+    
+    // Local development server
+    const port = process.env.PORT || 5000;
+    const localUrl = `http://localhost:${port}`;
+    
+    // Only add localhost if we're in development or no other servers are defined
+    if (process.env.NODE_ENV !== 'production' || servers.length === 0) {
+      servers.push({
+        url: localUrl,
+        description: 'Development server',
+      });
+    }
+    
+    // Fallback if no servers defined
+    if (servers.length === 0) {
+      servers.push({
+        url: localUrl,
+        description: 'Local server',
+      });
+    }
+    
+    return servers;
+  }
+
+  /**
    * Generate complete Swagger documentation
    */
   async generateDocumentation() {
@@ -29,16 +74,11 @@ class SwaggerGenerator {
     return {
       openapi: '3.0.0',
       info: {
-        title: 'AI Life Coach API',
-        version: '1.0.0',
-        description: 'Automatically generated API documentation',
+        title: process.env.API_TITLE || 'AI Life Coach API',
+        version: process.env.API_VERSION || '1.0.0',
+        description: process.env.API_DESCRIPTION || 'Automatically generated API documentation',
       },
-      servers: [
-        {
-          url: 'http://localhost:3000',
-          description: 'Development server',
-        },
-      ],
+      servers: this.generateServers(),
       components: {
         schemas: this.schemas,
         responses: {
