@@ -36,6 +36,16 @@ router.post('/:userId', async (req, res) => {
     res.json({ success: true, data: memory });
   } catch (error) {
     console.error('Error updating AI memory:', error);
+    
+    // Handle specific error cases
+    if (error.message.includes('User with ID') && error.message.includes('not found')) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    if (error.code === 'P2003') {
+      return res.status(400).json({ error: 'Invalid user ID - user does not exist' });
+    }
+    
     res.status(500).json({ error: 'Failed to update AI memory' });
   }
 });
@@ -44,9 +54,9 @@ router.post('/:userId', async (req, res) => {
 router.patch('/:userId/goals', async (req, res) => {
   try {
     const { userId } = req.params;
-    const { goals } = req.body;
+    const goals = req.body; // Accept the entire body as goals JSON
     
-    if (!goals) {
+    if (!goals || Object.keys(goals).length === 0) {
       return res.status(400).json({ error: 'Goals data is required' });
     }
     
@@ -54,6 +64,16 @@ router.patch('/:userId/goals', async (req, res) => {
     res.json({ success: true, data: memory });
   } catch (error) {
     console.error('Error updating goals:', error);
+    
+    // Handle specific error cases
+    if (error.message.includes('User with ID') && error.message.includes('not found')) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    if (error.code === 'P2003') {
+      return res.status(400).json({ error: 'Invalid user ID - user does not exist' });
+    }
+    
     res.status(500).json({ error: 'Failed to update goals' });
   }
 });
@@ -62,9 +82,9 @@ router.patch('/:userId/goals', async (req, res) => {
 router.patch('/:userId/preferences', async (req, res) => {
   try {
     const { userId } = req.params;
-    const { preferences } = req.body;
+    const preferences = req.body; // Accept the entire body as preferences JSON
     
-    if (!preferences) {
+    if (!preferences || Object.keys(preferences).length === 0) {
       return res.status(400).json({ error: 'Preferences data is required' });
     }
     
@@ -72,6 +92,16 @@ router.patch('/:userId/preferences', async (req, res) => {
     res.json({ success: true, data: memory });
   } catch (error) {
     console.error('Error updating preferences:', error);
+    
+    // Handle specific error cases
+    if (error.message.includes('User with ID') && error.message.includes('not found')) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    if (error.code === 'P2003') {
+      return res.status(400).json({ error: 'Invalid user ID - user does not exist' });
+    }
+    
     res.status(500).json({ error: 'Failed to update preferences' });
   }
 });

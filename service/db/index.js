@@ -208,7 +208,17 @@ export const reminderService = {
 export const aiMemoryService = {
   // Create or update AI memory for a user
   async upsert(userId, memoryData) {
-    return await prisma.aiMemory.upsert({
+    // First verify that the user exists
+    const userExists = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true }
+    });
+
+    if (!userExists) {
+      throw new Error(`User with ID ${userId} not found`);
+    }
+
+    return await prisma.aIMemory.upsert({
       where: { userId },
       update: {
         summary: memoryData.summary,
@@ -227,7 +237,7 @@ export const aiMemoryService = {
 
   // Get AI memory for a user
   async getByUser(userId) {
-    return await prisma.aiMemory.findUnique({
+    return await prisma.aIMemory.findUnique({
       where: { userId },
       include: {
         user: {
@@ -239,7 +249,17 @@ export const aiMemoryService = {
 
   // Update specific memory fields
   async updateGoals(userId, goals) {
-    return await prisma.aiMemory.upsert({
+    // First verify that the user exists
+    const userExists = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true }
+    });
+
+    if (!userExists) {
+      throw new Error(`User with ID ${userId} not found`);
+    }
+
+    return await prisma.aIMemory.upsert({
       where: { userId },
       update: {
         goals,
@@ -253,7 +273,17 @@ export const aiMemoryService = {
   },
 
   async updatePreferences(userId, preferences) {
-    return await prisma.aiMemory.upsert({
+    // First verify that the user exists
+    const userExists = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true }
+    });
+
+    if (!userExists) {
+      throw new Error(`User with ID ${userId} not found`);
+    }
+
+    return await prisma.aIMemory.upsert({
       where: { userId },
       update: {
         preferences,
@@ -268,7 +298,7 @@ export const aiMemoryService = {
 
   // Delete AI memory
   async delete(userId) {
-    return await prisma.aiMemory.delete({
+    return await prisma.aIMemory.delete({
       where: { userId },
     });
   },

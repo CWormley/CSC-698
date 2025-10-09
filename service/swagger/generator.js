@@ -545,10 +545,46 @@ class SwaggerGenerator {
       }));
     }
 
-    // Add request body for POST/PUT methods
-    if (['POST', 'PUT'].includes(method)) {
+    // Add request body for POST/PUT/PATCH methods
+    if (['POST', 'PUT', 'PATCH'].includes(method)) {
       const modelName = this.extractModelFromPath(path);
-      if (modelName && this.schemas[`${modelName}Input`]) {
+      
+      // Special handling for goals and preferences endpoints
+      if (path.includes('/goals')) {
+        operation.requestBody = {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                description: 'User goals as a JSON object',
+                example: {
+                  "fitness": "Exercise 30 minutes daily",
+                  "career": "Learn new programming language",
+                  "health": "Eat more vegetables"
+                }
+              },
+            },
+          },
+        };
+      } else if (path.includes('/preferences')) {
+        operation.requestBody = {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                description: 'User preferences as a JSON object',
+                example: {
+                  "communication_style": "direct",
+                  "reminder_frequency": "daily",
+                  "time_zone": "America/New_York"
+                }
+              },
+            },
+          },
+        };
+      } else if (modelName && this.schemas[`${modelName}Input`]) {
         operation.requestBody = {
           required: true,
           content: {
@@ -597,10 +633,46 @@ class SwaggerGenerator {
       }));
     }
 
-    // Add request body for POST/PUT methods
-    if (['POST', 'PUT'].includes(method)) {
+    // Add request body for POST/PUT/PATCH methods
+    if (['POST', 'PUT', 'PATCH'].includes(method)) {
       const modelName = this.extractModelFromPath(endpoint.path);
-      if (modelName && this.schemas[`${modelName}Input`]) {
+      
+      // Special handling for goals and preferences endpoints
+      if (endpoint.path.includes('/goals')) {
+        operation.requestBody = {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                description: 'User goals as a JSON object',
+                example: {
+                  "fitness": "Exercise 30 minutes daily",
+                  "career": "Learn new programming language",
+                  "health": "Eat more vegetables"
+                }
+              },
+            },
+          },
+        };
+      } else if (endpoint.path.includes('/preferences')) {
+        operation.requestBody = {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                description: 'User preferences as a JSON object',
+                example: {
+                  "communication_style": "direct",
+                  "reminder_frequency": "daily",
+                  "time_zone": "America/New_York"
+                }
+              },
+            },
+          },
+        };
+      } else if (modelName && this.schemas[`${modelName}Input`]) {
         operation.requestBody = {
           required: true,
           content: {
