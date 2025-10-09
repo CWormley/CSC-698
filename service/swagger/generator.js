@@ -411,33 +411,116 @@ class SwaggerGenerator {
   }
 
   /**
-   * Generate fallback paths when route discovery fails
+   * Generate fallback paths when route discovery fails by scanning actual route files
    */
   generateFallbackPaths() {
-    console.log('🔄 Using fallback path generation...');
+    console.log('🔄 Using fallback path generation by scanning route files...');
     
-    // Define known routes based on your route files
-    const knownRoutes = [
-      { path: '/api/users', methods: ['GET', 'POST'] },
-      { path: '/api/users/{id}', methods: ['GET', 'PUT', 'DELETE'] },
-      { path: '/api/users/email/{email}', methods: ['GET'] },
-      { path: '/api/messages', methods: ['GET', 'POST'] },
-      { path: '/api/messages/{id}', methods: ['GET', 'PUT', 'DELETE'] },
-      { path: '/api/reminders', methods: ['GET', 'POST'] },
-      { path: '/api/reminders/{id}', methods: ['GET', 'PUT', 'DELETE'] },
-      { path: '/api/ai-memory', methods: ['GET', 'POST'] },
-      { path: '/api/ai-memory/{id}', methods: ['GET', 'PUT', 'DELETE'] }
-    ];
-
-    knownRoutes.forEach(route => {
-      if (!this.paths[route.path]) {
-        this.paths[route.path] = {};
+    try {
+      const routeFiles = this.scanRouteFiles();
+      
+      if (routeFiles.length === 0) {
+        console.warn('⚠️ No route files found - no endpoints will be documented');
+        return;
       }
 
-      route.methods.forEach(method => {
-        this.paths[route.path][method.toLowerCase()] = this.generateOperationFromPath(route.path, method);
+      routeFiles.forEach(routeInfo => {
+        console.log(`📁 Found routes in ${routeInfo.file}:`, routeInfo.routes.map(r => `${r.methods.join(',')} ${r.path}`));
+        
+        routeInfo.routes.forEach(route => {
+          if (!this.paths[route.path]) {
+            this.paths[route.path] = {};
+          }
+
+          route.methods.forEach(method => {
+            this.paths[route.path][method.toLowerCase()] = this.generateOperationFromPath(route.path, method);
+          });
+        });
       });
+      
+      console.log(`✅ Generated documentation for ${Object.keys(this.paths).length} endpoints from actual route files`);
+    } catch (error) {
+      console.error('❌ Error scanning route files:', error);
+      console.log('⚠️ No routes documented - please check your routes directory');
+    }
+  }
+
+  /**
+   * Scan route files to discover actual endpoints
+   */
+  scanRouteFiles() {
+    const routesDir = path.join(process.cwd(), 'routes');
+    const routeFiles = [];
+
+    if (!fs.existsSync(routesDir)) {
+      console.warn(`⚠️ Routes directory not found: ${routesDir}`);
+      return [];
+    }
+
+    const files = fs.readdirSync(routesDir).filter(file => file.endsWith('.js'));
+    
+    files.forEach(file => {
+      try {
+        const filePath = path.join(routesDir, file);
+        const content = fs.readFileSync(filePath, 'utf-8');
+        
+        // Extract route information from file
+        const routes = this.extractRoutesFromFile(content, file);
+        if (routes.length > 0) {
+          const resourceName = path.basename(file, '.js');
+          routeFiles.push({
+            file: file,
+            resource: resourceName,
+            routes: routes
+          });
+        }
+      } catch (error) {
+        console.warn(`⚠️ Error reading route file ${file}:`, error.message);
+      }
     });
+
+    return routeFiles;
+  }
+
+  /**
+   * Extract routes from route file content using regex
+   */
+  extractRoutesFromFile(content, filename) {
+    const routes = [];
+    const resourceName = path.basename(filename, '.js');
+    const basePath = `/api/${resourceName}`;
+
+    // Regex patterns to match router method calls
+    const routePatterns = [
+      /router\.(get|post|put|delete|patch)\s*\(\s*['"`]([^'"`]+)['"`]/g,
+    ];
+
+    routePatterns.forEach(pattern => {
+      let match;
+      while ((match = pattern.exec(content)) !== null) {
+        const [, method, routePath] = match;
+        
+        // Convert route path to full API path
+        const fullPath = routePath === '/' ? basePath : `${basePath}${routePath}`;
+        
+        // Convert :param to {param} for OpenAPI
+        const openApiPath = fullPath.replace(/:(\w+)/g, '{$1}');
+
+        // Find existing route or create new one
+        let existingRoute = routes.find(r => r.path === openApiPath);
+        if (!existingRoute) {
+          existingRoute = { path: openApiPath, methods: [] };
+          routes.push(existingRoute);
+        }
+
+        const httpMethod = method.toUpperCase();
+        if (!existingRoute.methods.includes(httpMethod)) {
+          existingRoute.methods.push(httpMethod);
+        }
+      }
+    });
+
+    return routes;
   }
 
   /**

@@ -4,6 +4,22 @@ const prisma = new PrismaClient();
 
 // User operations
 export const userService = {
+  // Get all users
+  async getAll() {
+    return await prisma.user.findMany({
+      orderBy: { createdAt: 'desc' },
+      include: {
+        aiMemory: true,
+        _count: {
+          select: {
+            messages: true,
+            reminders: true,
+          },
+        },
+      },
+    });
+  },
+
   // Create a new user
   async create(userData) {
     return await prisma.user.create({

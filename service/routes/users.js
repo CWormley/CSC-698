@@ -3,6 +3,17 @@ import { userService } from '../db/index.js';
 
 const router = express.Router();
 
+// GET /api/users - Get all users
+router.get('/', async (req, res) => {
+  try {
+    const users = await userService.getAll();
+    res.json({ success: true, data: users });
+  } catch (error) {
+    console.error('Error fetching users:', error);
+    res.status(500).json({ error: 'Failed to fetch users' });
+  }
+});
+
 // GET /api/users/:id - Get user by ID
 router.get('/:id', async (req, res) => {
   try {
@@ -47,10 +58,22 @@ router.put('/:id', async (req, res) => {
   try {
     const { name } = req.body;
     
+    // First check if user exists
+    const existingUser = await userService.getById(req.params.id);
+    if (!existingUser) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
     const user = await userService.update(req.params.id, { name });
     res.json({ success: true, data: user });
   } catch (error) {
     console.error('Error updating user:', error);
+    
+    // Handle specific Prisma errors
+    if (error.code === 'P2025') {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
     res.status(500).json({ error: 'Failed to update user' });
   }
 });
