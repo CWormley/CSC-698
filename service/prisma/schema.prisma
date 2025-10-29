@@ -14,13 +14,15 @@ datasource db {
 // ---------- MODELS ----------
 
 model User {
-  id         String      @id @default(cuid())
-  email      String      @unique
-  name       String?
-  createdAt  DateTime    @default(now())
-  messages   Message[]
-  reminders  Reminder[]
-  aiMemory   AIMemory?   // 1:1 relation with AI memory
+  id           String      @id @default(cuid())
+  email        String      @unique
+  name         String?
+  passwordHash String
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  messages     Message[]
+  reminders    Reminder[]
+  aiMemory     AIMemory?   // 1:1 relation with AI memory
 }
 
 model Message {

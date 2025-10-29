@@ -4,7 +4,9 @@
   "compilerOptions": {
     "target": "esnext",
     "module": "esnext",
-    "types": ["jest"],
+    "types": [
+      "jest"
+    ],
     "lib": [
       "es2019",
       "es2020.bigint",
@@ -26,7 +28,9 @@
     "isolatedModules": true,
     "strict": true,
     "moduleResolution": "bundler",
-    "customConditions": ["react-native"],
+    "customConditions": [
+      "react-native"
+    ],
     "allowImportingTsExtensions": true,
     "allowArbitraryExtensions": true,
     "resolveJsonModule": true,
@@ -36,6 +40,13 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": false
   },
-  "include": ["**/*.ts", "**/*.tsx"],
-  "exclude": ["**/node_modules", "**/Pods"]
+  "include": [
+    "**/*.ts",
+    "**/*.tsx"
+  ],
+  "exclude": [
+    "**/node_modules",
+    "**/Pods"
+  ],
+  "extends": "expo/tsconfig.base"
 }

@@ -5,6 +5,7 @@ import { disconnect } from "./db/index.js";
 import { getSwaggerSpecs, createSwaggerMiddleware, swaggerUi, regenerateSwaggerDocs } from "./swagger.js";
 
 // Import route handlers
+import authRoutes from "./routes/auth.js";
 import userRoutes from "./routes/users.js";
 import messageRoutes from "./routes/messages.js";
 import reminderRoutes from "./routes/reminders.js";
@@ -21,6 +22,7 @@ app.use(express.json());
 app.get("/", (req, res) => res.send("AI Life Coach API Server running ✅"));
 
 // API routes - REGISTER THESE FIRST
+app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/messages", messageRoutes);
 app.use("/api/reminders", reminderRoutes);

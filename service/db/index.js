@@ -26,6 +26,7 @@ export const userService = {
       data: {
         email: userData.email,
         name: userData.name,
+        passwordHash: userData.passwordHash,
       },
       include: {
         aiMemory: true,

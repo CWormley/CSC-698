@@ -100,3 +100,8 @@ flipper-server-state.json
 
 # Watchman
 .watchmanconfig.lock
+
+# Expo
+.expo
+dist/
+web-build/
