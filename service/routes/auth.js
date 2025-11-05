@@ -188,6 +188,7 @@ export function authenticateToken(req, res, next) {
     }
     
     req.userId = decoded.userId;
+    req.user = { id: decoded.userId }; // Also attach user object for convenience
     next();
   });
 }

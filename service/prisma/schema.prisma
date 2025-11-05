@@ -46,13 +46,18 @@ model Reminder {
 }
 
 model AIMemory {
-  id          String   @id @default(cuid())
-  user        User     @relation(fields: [userId], references: [id])
-  userId      String   @unique  // Ensures one memory per user
-  summary     String?
-  goals       Json?
-  preferences Json?
-  lastSync    DateTime @default(now())
+  id                    String   @id @default(cuid())
+  user                  User     @relation(fields: [userId], references: [id])
+  userId                String   @unique  // Ensures one memory per user
+  summary               String?
+  goals                 Json?
+  preferences           Json?
+  lastSync              DateTime @default(now())
+  // Onboarding extraction metadata for quality tracking
+  extractionConfidence  String?  // 'high' | 'medium' | 'low'
+  extractionWarnings    Json?    // Array of warning strings from parser
+  extractedAt           DateTime? // When the profile was auto-extracted
+  manuallyVerified      Boolean  @default(false) // True if user confirmed extraction
 }
 
 // ---------- ENUMS ----------

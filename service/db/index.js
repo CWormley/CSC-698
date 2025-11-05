@@ -219,12 +219,20 @@ export const aiMemoryService = {
       throw new Error(`User with ID ${userId} not found`);
     }
 
+    // Extract metadata fields (from chat onboarding parser)
+    const extractionConfidence = memoryData._extractionConfidence || null;
+    const extractionWarnings = memoryData._extractionWarnings || null;
+    const extractedAt = memoryData._extractedAt || null;
+
     return await prisma.aIMemory.upsert({
       where: { userId },
       update: {
         summary: memoryData.summary,
         goals: memoryData.goals,
         preferences: memoryData.preferences,
+        extractionConfidence,
+        extractionWarnings,
+        extractedAt,
         lastSync: new Date(),
       },
       create: {
@@ -232,6 +240,9 @@ export const aiMemoryService = {
         summary: memoryData.summary,
         goals: memoryData.goals,
         preferences: memoryData.preferences,
+        extractionConfidence,
+        extractionWarnings,
+        extractedAt,
       },
     });
   },

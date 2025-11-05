@@ -10,6 +10,7 @@ import userRoutes from "./routes/users.js";
 import messageRoutes from "./routes/messages.js";
 import reminderRoutes from "./routes/reminders.js";
 import aiMemoryRoutes from "./routes/ai-memory.js";
+import chatRoutes from "./routes/chat.js"; // Using real OpenAI with cost optimization
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -27,6 +28,7 @@ app.use("/api/users", userRoutes);
 app.use("/api/messages", messageRoutes);
 app.use("/api/reminders", reminderRoutes);
 app.use("/api/ai-memory", aiMemoryRoutes);
+app.use("/api/chat", chatRoutes);
 
 // Auto-updating Swagger middleware (after routes are registered)
 app.use(createSwaggerMiddleware(app));
