@@ -85,10 +85,14 @@ async function generateChatResponse(userId, userMessage) {
     
     // Get user context from AI memory
     const userContext = await getUserContext(userId);
+    
+    // Check if onboarding has already been initiated (onboarding message exists in history)
+    const onboardingInitiated = conversationHistory.length > 0;
+    console.log(`Onboarding initiated: ${onboardingInitiated}, User context exists: ${!!userContext && userContext.trim().length > 0}`);
 
-    // ONBOARDING: If no user context exists, ask onboarding questions
-    // The first chat should ask for a few details: who they are, goals, and preferred motivational tone
-    if (!userContext || userContext.trim().length === 0) {
+    // ONBOARDING: If no user context exists AND onboarding hasn't been started, ask onboarding questions
+    // Only show onboarding prompt on first interaction (when conversation is empty)
+    if ((!userContext || userContext.trim().length === 0) && !onboardingInitiated) {
       const onboardingPrompt = `Thanks for starting a chat! Before we begin, I'd love to learn a bit about you so I can personalize my responses.
 Please reply with a short answer containing:
 - Who you are (name or short summary)
@@ -116,7 +120,8 @@ You can just write naturally — I'll take care of saving this in your profile.`
     // This prevents data loss from ambiguous input
     const lower = userMessage.toLowerCase();
     const hasOnboardingKeywords = /my name is|i am\b|i'm\b|goals?:|goal:|i want to|i'd like to|tone:|prefer/.test(lower);
-    if (hasOnboardingKeywords) {
+    if (hasOnboardingKeywords && !userContext) {
+      // Only ask for clarification if user context still doesn't exist
       return `I caught some profile info, but I want to make sure I get it right. Could you re-phrase using this format?
 
 My name is [your name]. Goals: [goal 1]; [goal 2]; [goal 3]. Tone: [encouraging/supportive/energizing/firm/etc].
@@ -180,19 +185,26 @@ router.post('/', authenticateToken, async (req, res) => {
     const { message } = req.body;
     const userId = req.user.id;
 
-    // Validate input
-    if (!message || message.trim().length === 0) {
+    // Allow empty message for fetching onboarding prompt on first interaction
+    if (message === undefined) {
       return res.status(400).json({ error: 'Message is required' });
     }
 
-    console.log(`\n💬 Chat request from user ${userId}: "${message}"`);
+    // Empty message is allowed - used to fetch onboarding prompt
+    const isOnboardingFetch = message.trim().length === 0;
 
-    // Save user message to database
-    const userMsg = await messageService.create({
-      text: message,
-      userId,
-    });
-    console.log(`✓ Saved user message: ${userMsg.id}`);
+    console.log(`\n💬 Chat request from user ${userId}: ${isOnboardingFetch ? '[ONBOARDING FETCH]' : `"${message}"`}`);
+
+    // Only save user message if it's not empty
+    let userMsg;
+    if (!isOnboardingFetch) {
+      userMsg = await messageService.create({
+        text: message,
+        userId,
+        role: "user", // Explicitly mark as user message
+      });
+      console.log(`✓ Saved user message: ${userMsg.id}`);
+    }
 
     // Generate AI response
     console.log('🤖 Generating AI response...');
@@ -203,13 +215,14 @@ router.post('/', authenticateToken, async (req, res) => {
     const aiMsg = await messageService.create({
       text: aiResponse,
       userId,
+      role: "assistant", // Explicitly mark as AI response
     });
     console.log(`✓ Saved AI message: ${aiMsg.id}`);
 
     res.json({
       success: true,
       data: {
-        userMessage: userMsg,
+        userMessage: userMsg || null,
         aiResponse: aiMsg,
       },
     });
@@ -217,6 +230,40 @@ router.post('/', authenticateToken, async (req, res) => {
     console.error('❌ Error in chat endpoint:', error);
     res.status(500).json({
       error: 'Failed to process chat message',
+      message: error.message,
+    });
+  }
+});
+
+/**
+ * GET /api/chat/suggestion/:userId - Generate AI suggestion based on recent chat
+ * Returns: { success, data: { suggestion } }
+ */
+router.get('/suggestion/:userId', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.params.userId;
+    
+    // Get recent conversation history
+    const recentMessages = await getConversationHistory(userId, 2);
+    
+    if (recentMessages.length === 0) {
+      return res.json({
+        success: true,
+        data: { suggestion: null },
+      });
+    }
+    
+    // Generate AI suggestion
+    const suggestion = await generateAISuggestion(userId, recentMessages);
+    
+    res.json({
+      success: true,
+      data: { suggestion },
+    });
+  } catch (error) {
+    console.error('Error generating suggestion:', error);
+    res.status(500).json({
+      error: 'Failed to generate suggestion',
       message: error.message,
     });
   }
@@ -237,9 +284,21 @@ router.get('/history/:userId', authenticateToken, async (req, res) => {
     }
 
     const messages = await messageService.getByUser(userId, limit);
+    
+    // Ensure role field is present and valid for all messages
+    const messagesWithRole = messages.map(msg => ({
+      ...msg,
+      role: msg.role || 'user', // Fallback to 'user' if role is missing
+    }));
+    
+    console.log(`📤 Returning ${messagesWithRole.length} messages for user ${userId}`);
+    if (messagesWithRole.length > 0) {
+      console.log(`   First message role: ${messagesWithRole[0].role}, Last message role: ${messagesWithRole[messagesWithRole.length - 1].role}`);
+    }
+    
     res.json({
       success: true,
-      data: messages,
+      data: messagesWithRole,
     });
   } catch (error) {
     console.error('Error fetching chat history:', error);
@@ -330,12 +389,15 @@ async function tryHandleOnboardingReply(userId, message) {
     const hasGoals = /goals?:|goal:|i want to|i'd like to|i would like to|i'm aiming|aiming to/.test(lower);
     const hasTone = /tone:|encourag|support|energiz|firm|strict|gentle|motiv|prefer/.test(lower);
 
+    console.log(`🔍 Onboarding keyword check: hasName=${hasName}, hasGoals=${hasGoals}, hasTone=${hasTone}`);
+
     if (!(hasName || hasGoals || hasTone)) {
       console.log('⚠️ No onboarding keywords detected - treating as regular chat');
       return false;
     }
 
     const parsed = parseOnboardingReply(message);
+    console.log(`📋 Parsed onboarding: confidence=${parsed.confidence}, summary=${parsed.summary}, goals=${parsed.goals.length}, tone=${parsed.preferences.tone}`);
 
     // Confidence check: only save if we're reasonably sure
     if (parsed.confidence === 'low') {
@@ -370,6 +432,7 @@ async function tryHandleOnboardingReply(userId, message) {
       memoryPayload._extractionWarnings = parsed.warnings;
     }
 
+    console.log(`💾 Attempting to save AI memory for user ${userId}...`);
     await aiMemoryService.upsert(userId, memoryPayload);
     console.log(`✅ Onboarding data saved [${parsed.confidence} confidence] for user ${userId}`);
     console.log('   Saved:', memoryPayload);
@@ -432,7 +495,7 @@ function parseOnboardingReply(text) {
   let extractedGoals = [];
   
   // Priority 1: Explicit "Goals:" or "Goal:" field
-  const goalsMatch = text.match(/goals?:\s*([^\n]*(?:\n(?!tone:|preference:)[^\n]*)*)/i);
+  const goalsMatch = text.match(/goals?:\s*([^\n]*?)(?=tone:|preference:|$)/i);
   if (goalsMatch && goalsMatch[1]) {
     // Split carefully: only on semicolons, commas, or sentence boundaries
     // Avoid splitting on "and" to prevent "machine and deep learning" → ["machine", "deep learning"]
@@ -536,3 +599,179 @@ function parseOnboardingReply(text) {
 
   return result;
 }
+
+/**
+ * Parse natural language time expressions into ISO date and time
+ * Examples: "tomorrow morning", "next Monday at 3pm", "today evening"
+ */
+function parseNaturalLanguageTime(text) {
+  const now = new Date();
+  let date = new Date(now);
+  let time = null;
+
+  const lowerText = text.toLowerCase();
+
+  // Extract time of day
+  const timeMatches = {
+    morning: '09:00',
+    noon: '12:00',
+    afternoon: '14:00',
+    evening: '18:00',
+    night: '20:00',
+  };
+
+  for (const [period, timeStr] of Object.entries(timeMatches)) {
+    if (lowerText.includes(period)) {
+      time = timeStr;
+      break;
+    }
+  }
+
+  // Extract specific time like "3pm" or "15:30"
+  const timeRegex = /(\d{1,2}):?(\d{2})?\s*(am|pm)?/i;
+  const timeMatch = text.match(timeRegex);
+  if (timeMatch) {
+    let hours = parseInt(timeMatch[1]);
+    const minutes = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
+    const period = timeMatch[3]?.toLowerCase();
+
+    if (period === 'pm' && hours !== 12) hours += 12;
+    if (period === 'am' && hours === 12) hours = 0;
+
+    time = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+  }
+
+  // Extract date references
+  if (lowerText.includes('tomorrow')) {
+    date.setDate(date.getDate() + 1);
+  } else if (lowerText.includes('today')) {
+    // Use current date
+  } else if (lowerText.includes('next')) {
+    // Look for day of week
+    const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+    for (const day of days) {
+      if (lowerText.includes(day)) {
+        const targetDay = days.indexOf(day);
+        const currentDay = date.getDay();
+        const daysAhead = targetDay - currentDay;
+        if (daysAhead <= 0) daysAhead += 7;
+        date.setDate(date.getDate() + daysAhead);
+        break;
+      }
+    }
+  } else {
+    // Check for specific day names
+    const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+    for (const day of days) {
+      if (lowerText.includes(day)) {
+        const targetDay = days.indexOf(day);
+        const currentDay = date.getDay();
+        let daysAhead = targetDay - currentDay;
+        if (daysAhead < 0) daysAhead += 7;
+        if (daysAhead === 0) daysAhead = 7; // If same day, assume next week
+        date.setDate(date.getDate() + daysAhead);
+        break;
+      }
+    }
+  }
+
+  return {
+    date: date.toISOString().split('T')[0], // YYYY-MM-DD format
+    time: time || '10:00', // Default to 10am if no time specified
+  };
+}
+
+/**
+ * Generate AI-based suggestion for goal or calendar event based on recent chat context
+ */
+async function generateAISuggestion(userId, recentMessages) {
+  try {
+    const llm = getCheapLLM(); // Use cheaper model for this task
+    
+    // Build context from recent messages
+    const messageContext = recentMessages
+      .slice(-5) // Last 5 messages for context
+      .map(msg => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`)
+      .join('\n');
+
+    // Get user context
+    const userContext = await getUserContext(userId);
+
+    const prompt = `Based on this conversation and user context, generate ONE actionable suggestion for the user. 
+
+User Context:
+${userContext || 'No profile info available yet'}
+
+Recent Conversation:
+${messageContext}
+
+Generate a single suggestion in JSON format with:
+{
+  "type": "goal" or "event",
+  "text": "specific, actionable suggestion (10-15 words max)",
+  "reasoning": "brief explanation why this would help",
+  "eventDate": "YYYY-MM-DD (if type is event)",
+  "eventTime": "HH:MM (if type is event)",
+  "frequency": "optional recurrence info (if type is event)"
+}
+
+If the conversation doesn't warrant a suggestion, return:
+{"type": null}
+
+Think about what the user is trying to accomplish and suggest either:
+- A specific GOAL to work on (if they mention aspirations, challenges, or areas to improve)
+- A CALENDAR EVENT to schedule (if they mention something time-specific, recurring, or need a reminder)
+
+Return ONLY valid JSON, no other text.`;
+
+    console.log('🤖 Generating suggestion with prompt:', prompt.slice(0, 200) + '...');
+    
+    const response = await llm.invoke(prompt);
+    
+    // Handle different response formats
+    const responseText = typeof response === 'string' ? response : response.content;
+    console.log('💬 LLM suggestion response:', responseText.slice(0, 200));
+    
+    // Parse the response
+    try {
+      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        console.log('⚠️ No JSON found in suggestion response');
+        return null;
+      }
+      
+      const suggestion = JSON.parse(jsonMatch[0]);
+      
+      if (!suggestion.type) {
+        console.log('💭 No actionable suggestion generated (type is null)');
+        return null;
+      }
+      
+      console.log(`✨ Generated AI suggestion: ${suggestion.type} - ${suggestion.text}`);
+      
+      // Parse time for calendar events
+      let parsedTime = null;
+      if (suggestion.type === 'event') {
+        parsedTime = parseNaturalLanguageTime(suggestion.text);
+      }
+      
+      return {
+        type: suggestion.type,
+        text: suggestion.type === 'goal' 
+          ? `Add Goal: ${suggestion.text}?`
+          : `Schedule: ${suggestion.text}?`,
+        context: `Reasoning: ${suggestion.reasoning}`,
+        eventDate: parsedTime?.date,
+        eventTime: parsedTime?.time,
+      };
+    } catch (parseError) {
+      console.error('❌ Failed to parse suggestion response:', parseError, 'Response was:', responseText);
+      return null;
+    }
+  } catch (error) {
+    console.error('❌ Error generating AI suggestion:', error);
+    return null;
+  }
+}
+
+

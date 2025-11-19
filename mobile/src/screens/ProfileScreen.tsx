@@ -9,14 +9,16 @@ import {
   Alert,
   ActivityIndicator,
 } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAuth } from "../context/AuthContext";
 import { StackScreenProps } from "@react-navigation/stack";
 import { RootStackParamList } from "../navigation/AppNavigator";
+import { SERVICE_URL } from "@env";
 
 type ProfileScreenProps = StackScreenProps<RootStackParamList, "Profile">;
 
 export default function ProfileScreen({ navigation }: ProfileScreenProps) {
-  const { user, signOut } = useAuth();
+  const { user, signOut, updateUser } = useAuth();
   const [name, setName] = useState(user?.name || "");
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -27,14 +29,55 @@ export default function ProfileScreen({ navigation }: ProfileScreenProps) {
       return;
     }
 
+    if (name === user?.name) {
+      return;
+    }
+
     try {
       setIsSaving(true);
-      // TODO: Call API to update user name
-      // For now, we'll just show a success message
-      Alert.alert("Success", "Profile updated successfully");
+      
+      // Get auth token
+      const token = await AsyncStorage.getItem("@user_token");
+      if (!token) {
+        Alert.alert("Error", "Authentication token not found");
+        return;
+      }
+
+      console.log("Updating user:", {
+        url: `${SERVICE_URL}/api/users/${user?.id}`,
+        userId: user?.id,
+        token: token ? "present" : "missing",
+        name: name.trim(),
+      });
+
+      // Call API to update user name
+      const response = await fetch(`${SERVICE_URL}/api/users/${user?.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
+        },
+        body: JSON.stringify({ name: name.trim() }),
+      });
+
+      const data = await response.json();
+
+      console.log("Update response:", { status: response.status, data });
+
+      if (!response.ok) {
+        Alert.alert("Error", data.error || "Failed to update profile");
+        return;
+      }
+
+      // Update the user in auth context
+      updateUser({ name: name.trim() });
+      
     } catch (error) {
       Alert.alert("Error", "Failed to update profile");
-      console.error(error);
+      console.error("Update profile error:", error);
+      if (error instanceof TypeError) {
+        console.error("Network error:", error.message);
+      }
     } finally {
       setIsSaving(false);
     }
@@ -158,7 +201,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#000",
     paddingHorizontal: 16,
-    paddingTop: 50,
+    paddingTop: 55,
   },
   loadingContainer: {
     flex: 1,

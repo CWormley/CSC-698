@@ -22,12 +22,15 @@ model User {
   updatedAt    DateTime    @updatedAt
   messages     Message[]
   reminders    Reminder[]
+  goals        Goal[]
+  calendarEvents CalendarEvent[]
   aiMemory     AIMemory?   // 1:1 relation with AI memory
 }
 
 model Message {
   id        String   @id @default(uuid())
   text      String
+  role      String   @default("user") // "user" or "assistant"
   userId    String
   user      User     @relation(fields: [userId], references: [id])
   createdAt DateTime @default(now())
@@ -58,6 +61,32 @@ model AIMemory {
   extractionWarnings    Json?    // Array of warning strings from parser
   extractedAt           DateTime? // When the profile was auto-extracted
   manuallyVerified      Boolean  @default(false) // True if user confirmed extraction
+}
+
+model Goal {
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  text      String
+  category  String   @default("general") // "goal", "habit", "ai_suggested", etc.
+  priority  String   @default("medium") // "low", "medium", "high"
+  completed Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model CalendarEvent {
+  id           String   @id @default(cuid())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId       String
+  title        String
+  type         String   @default("event") // "event", "reminder", "ai_suggested"
+  date         DateTime? // Event date in YYYY-MM-DD format
+  time         String?   // Event time in HH:mm format (24-hour)
+  description  String?
+  completed    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }
 
 // ---------- ENUMS ----------

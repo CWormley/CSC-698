@@ -14,6 +14,7 @@ interface AuthContextType {
   signIn: (email: string, password: string) => Promise<boolean>;
   signUp: (email: string, password: string, name: string) => Promise<boolean>;
   signOut: () => Promise<void>;
+  updateUser: (updatedUser: Partial<User>) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -39,7 +40,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       
       if (token) {
         // Validate token with backend
-        const response = await fetch(`${SERVICE_URL}/auth/me`, {
+        const response = await fetch(`${SERVICE_URL}/api/auth/me`, {
           headers: {
             'Authorization': `Bearer ${token}`,
           },
@@ -75,7 +76,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setIsLoading(true);
       
       // Call real authentication API
-      const response = await fetch(`${SERVICE_URL}/auth/login`, {
+      const loginUrl = `${SERVICE_URL}/api/auth/login`;
+      console.log('Attempting login to:', loginUrl);
+      
+      const response = await fetch(loginUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -84,6 +88,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       });
       
       const data = await response.json();
+      console.log('Login response received:', data);
       
       if (response.ok && data.success) {
         const { user: userData, token } = data.data;
@@ -97,10 +102,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       }
       
       // Log error for debugging
-      console.error('Sign in failed:', data.error || 'Unknown error');
+      console.error('Sign in failed - Status:', response.status);
+      console.error('Sign in failed - Response:', data);
+      console.error('Sign in failed - Error:', data.error || 'Unknown error');
       return false;
     } catch (error) {
-      console.error('Sign in error:', error);
+      console.error('Sign in network error:', error);
+      console.error('Sign in error message:', (error as Error).message);
       return false;
     } finally {
       setIsLoading(false);
@@ -112,7 +120,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setIsLoading(true);
       
       // Call real registration API
-      const response = await fetch(`${SERVICE_URL}/auth/register`, {
+      const response = await fetch(`${SERVICE_URL}/api/auth/register`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -151,7 +159,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       if (token) {
         // Call logout endpoint (optional - mainly for server-side session management)
         try {
-          await fetch(`${SERVICE_URL}/auth/logout`, {
+          await fetch(`${SERVICE_URL}/api/auth/logout`, {
             method: 'POST',
             headers: {
               'Authorization': `Bearer ${token}`,
@@ -171,12 +179,24 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
+  const updateUser = (updatedUser: Partial<User>) => {
+    if (user) {
+      const newUser = { ...user, ...updatedUser };
+      setUser(newUser);
+      // Also update the stored user data
+      AsyncStorage.setItem(USER_KEY, JSON.stringify(newUser)).catch(err => {
+        console.error('Error updating user in storage:', err);
+      });
+    }
+  };
+
   const value: AuthContextType = {
     user,
     isLoading,
     signIn,
     signUp,
     signOut,
+    updateUser,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

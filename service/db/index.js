@@ -90,6 +90,7 @@ export const messageService = {
       data: {
         text: messageData.text,
         userId: messageData.userId,
+        role: messageData.role || "user", // Defaults to "user" if not specified
       },
       include: {
         user: true,
@@ -101,7 +102,7 @@ export const messageService = {
   async getByUser(userId, limit = 50) {
     return await prisma.message.findMany({
       where: { userId },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: 'asc' }, // Changed to asc so older messages come first (natural conversation order)
       take: limit,
       include: {
         user: {
@@ -312,6 +313,182 @@ export const aiMemoryService = {
   async delete(userId) {
     return await prisma.aIMemory.delete({
       where: { userId },
+    });
+  },
+};
+
+// Goal operations
+export const goalService = {
+  // Create a new goal
+  async create(goalData) {
+    return await prisma.goal.create({
+      data: {
+        userId: goalData.userId,
+        text: goalData.text,
+        category: goalData.category || 'general',
+        priority: goalData.priority || 'medium',
+      },
+      include: {
+        user: { select: { id: true, name: true, email: true } },
+      },
+    });
+  },
+
+  // Get all goals for a user
+  async getByUser(userId) {
+    return await prisma.goal.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        user: { select: { id: true, name: true, email: true } },
+      },
+    });
+  },
+
+  // Get goal by ID
+  async getById(goalId) {
+    return await prisma.goal.findUnique({
+      where: { id: goalId },
+      include: {
+        user: { select: { id: true, name: true, email: true } },
+      },
+    });
+  },
+
+  // Update goal
+  async update(goalId, goalData) {
+    return await prisma.goal.update({
+      where: { id: goalId },
+      data: goalData,
+      include: {
+        user: { select: { id: true, name: true, email: true } },
+      },
+    });
+  },
+
+  // Delete goal
+  async delete(goalId) {
+    return await prisma.goal.delete({
+      where: { id: goalId },
+    });
+  },
+};
+
+// Calendar Event operations
+export const calendarEventService = {
+  // Helper function to validate date format (YYYY-MM-DD)
+  _validateDate(date) {
+    if (!date) return null;
+    
+    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+    if (!dateRegex.test(date)) {
+      throw new Error('Invalid date format. Use YYYY-MM-DD');
+    }
+    
+    const dateObj = new Date(date);
+    if (isNaN(dateObj.getTime())) {
+      throw new Error('Invalid date value');
+    }
+    
+    return dateObj;
+  },
+
+  // Helper function to validate time format (HH:mm)
+  _validateTime(time) {
+    if (!time) return null;
+    
+    const timeRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
+    if (!timeRegex.test(time)) {
+      throw new Error('Invalid time format. Use HH:mm (24-hour format)');
+    }
+    
+    return time;
+  },
+
+  // Create a new calendar event
+  async create(eventData) {
+    const date = eventData.date ? this._validateDate(eventData.date) : null;
+    const time = eventData.time ? this._validateTime(eventData.time) : null;
+    
+    if (!date) {
+      throw new Error('Event date is required (YYYY-MM-DD format)');
+    }
+
+    return await prisma.calendarEvent.create({
+      data: {
+        userId: eventData.userId,
+        title: eventData.title,
+        type: eventData.type || 'event',
+        date,
+        time,
+        description: eventData.description,
+      },
+      include: {
+        user: { select: { id: true, name: true, email: true } },
+      },
+    });
+  },
+
+  // Get all calendar events for a user
+  async getByUser(userId) {
+    return await prisma.calendarEvent.findMany({
+      where: { userId },
+      orderBy: [
+        { date: 'asc' },
+        { time: 'asc' },
+      ],
+      include: {
+        user: { select: { id: true, name: true, email: true } },
+      },
+    });
+  },
+
+  // Get calendar event by ID
+  async getById(eventId) {
+    return await prisma.calendarEvent.findUnique({
+      where: { id: eventId },
+      include: {
+        user: { select: { id: true, name: true, email: true } },
+      },
+    });
+  },
+
+  // Update calendar event
+  async update(eventId, eventData) {
+    const updateData = {};
+    
+    if (eventData.title !== undefined) updateData.title = eventData.title;
+    if (eventData.type !== undefined) updateData.type = eventData.type;
+    if (eventData.description !== undefined) updateData.description = eventData.description;
+    if (eventData.completed !== undefined) updateData.completed = eventData.completed;
+    
+    // Validate and set date if provided
+    if (eventData.date !== undefined) {
+      updateData.date = eventData.date ? this._validateDate(eventData.date) : null;
+    }
+    
+    // Validate and set time if provided
+    if (eventData.time !== undefined) {
+      updateData.time = eventData.time ? this._validateTime(eventData.time) : null;
+    }
+    
+    if (Object.keys(updateData).length === 0) {
+      throw new Error('No valid fields to update');
+    }
+    
+    return await prisma.calendarEvent.update({
+      where: { id: eventId },
+      data: updateData,
+      include: {
+        user: { select: { id: true, name: true, email: true } },
+      },
+    });
+  },
+
+  // Delete calendar event
+  async delete(eventId) {
+    return await prisma.calendarEvent.delete({
+      where: { id: eventId },
     });
   },
 };
