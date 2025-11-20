@@ -1,6 +1,6 @@
 # CSC-698
 **Personalized AI Motivator and Life Coach**
-
+Demo Video: https://drive.google.com/file/d/1nWlVcd2dwHg2ufxlH9bEcJn8D7Jbfx4W/view?usp=sharing
 > 🚀 **Quick Start**: New to the project? Check out [SETUP.md](./SETUP.md) for complete installation instructions.
 
 ## Project Overview
