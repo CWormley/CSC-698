@@ -24,7 +24,7 @@ if (!process.env.OPENAI_API_KEY) {
 async function getConversationHistory(userId, limit = 10) {
   const messages = await messageService.getConversation(userId, limit);
   return messages.reverse().map(msg => ({
-    role: 'user',
+    role: msg.role || 'user', // Use actual role from database, default to 'user' if missing
     content: msg.text,
   }));
 }
@@ -653,7 +653,7 @@ function parseNaturalLanguageTime(text) {
       if (lowerText.includes(day)) {
         const targetDay = days.indexOf(day);
         const currentDay = date.getDay();
-        const daysAhead = targetDay - currentDay;
+        let daysAhead = targetDay - currentDay;
         if (daysAhead <= 0) daysAhead += 7;
         date.setDate(date.getDate() + daysAhead);
         break;
@@ -683,12 +683,46 @@ function parseNaturalLanguageTime(text) {
 
 /**
  * Generate AI-based suggestion for goal or calendar event based on recent chat context
+ * Distinguishes between daily goals (short-term, repeatable) and long-term goals (major aspirations)
  */
 async function generateAISuggestion(userId, recentMessages) {
   try {
     const llm = getCheapLLM(); // Use cheaper model for this task
     
-    // Build context from recent messages
+    // Get the user's most recent message - this is what we should focus on
+    const userMessages = recentMessages.filter(msg => msg.role === 'user');
+    console.log(`📋 Total messages in history: ${recentMessages.length}`);
+    console.log(`📋 User messages: ${userMessages.length}`);
+    recentMessages.forEach((msg, idx) => {
+      console.log(`   [${idx}] ${msg.role}: ${msg.content.substring(0, 50)}...`);
+    });
+    
+    const mostRecentUserMessage = userMessages[userMessages.length - 1]?.content || '';
+    console.log(`📝 Most recent USER message: "${mostRecentUserMessage.substring(0, 100)}..."`);
+    
+    // PRE-PROCESSING: Check for red flag patterns that MUST be events
+    const msgLower = mostRecentUserMessage.toLowerCase();
+    const dayNames = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+    const dayMap = { monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6, sunday: 0 };
+    
+    // Check for recurring/scheduled patterns
+    const hasRecurringPattern = dayNames.some(day => {
+      const patterns = [
+        `every ${day}`,
+        `every\\s+${day}`,
+        `on ${day}`,
+        `${day}\\s+morning`,
+        `${day}\\s+afternoon`,
+        `${day}\\s+evening`,
+        `\\b${day}\\b`, // Just the day name by itself (e.g., "Monday," or "Monday and" or "Monday ")
+      ];
+      return patterns.some(p => new RegExp(p, 'i').test(msgLower));
+    }) || msgLower.includes('every other') || /\d+x a week|twice a|twice a week|weekly|biweekly/.test(msgLower);
+    
+    console.log(`🔍 PRE-PROCESSING: Message="${mostRecentUserMessage}"`);
+    console.log(`   Recurring pattern detected: ${hasRecurringPattern}`);
+    
+    // Build context from recent messages for broader understanding
     const messageContext = recentMessages
       .slice(-5) // Last 5 messages for context
       .map(msg => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`)
@@ -697,30 +731,118 @@ async function generateAISuggestion(userId, recentMessages) {
     // Get user context
     const userContext = await getUserContext(userId);
 
-    const prompt = `Based on this conversation and user context, generate ONE actionable suggestion for the user. 
+    const prompt = `Based on the user's MOST RECENT MESSAGE and conversation context, generate ONE suggestion that directly addresses what they just said.
 
-User Context:
-${userContext || 'No profile info available yet'}
+⚠️ IMPORTANT: 
+- Focus primarily on the user's most recent message for the GOAL/ACTIVITY
+- Use the broader conversation context to make the suggestion MORE SPECIFIC with any advice/details the AI provided
+- If the AI mentioned specific techniques, timing, or strategies, incorporate those into the suggestion text
 
-Recent Conversation:
+User's Most Recent Message:
+"${mostRecentUserMessage}"
+
+Broader Conversation Context (for reference - use to enhance suggestion details):
 ${messageContext}
 
-Generate a single suggestion in JSON format with:
+User Profile Context:
+${userContext || 'No profile info available yet'}
+
+Generate a single suggestion in JSON format that directly addresses the user's most recent message:
 {
-  "type": "goal" or "event",
-  "text": "specific, actionable suggestion (10-15 words max)",
-  "reasoning": "brief explanation why this would help",
-  "eventDate": "YYYY-MM-DD (if type is event)",
-  "eventTime": "HH:MM (if type is event)",
-  "frequency": "optional recurrence info (if type is event)"
+  "type": "daily_goal" | "longterm_goal" | "event",
+  "text": "ONLY the action/verb phrase with relevant details from the conversation - NO day names, NO time periods. Examples: 'work out with intensity focus', 'meditate for 15 minutes', 'read a book chapter by chapter'. Incorporate any specific advice the AI gave.",
+  "reasoning": "brief explanation why this addresses what the user said. If type is event, include the recommended day/timing.",
+  "goalType": "ONLY for goals: 'daily' or 'longterm'",
+  "eventDate": "YYYY-MM-DD (only if type is event) - IMPORTANT: If user mentioned a specific day/date, use that. If not, suggest the most appropriate day based on context.",
+  "eventTime": "HH:MM (only if type is event)",
+  "recurring": "daily|weekly|biweekly|monthly|yearly (only if type is event and it's a repeating activity)",
+  "recurringDays": "[0-6] array for weekly recurrence, e.g. [1,3,5] for Mon/Wed/Fri (only if recurring is 'weekly')"
 }
 
 If the conversation doesn't warrant a suggestion, return:
 {"type": null}
 
-Think about what the user is trying to accomplish and suggest either:
-- A specific GOAL to work on (if they mention aspirations, challenges, or areas to improve)
-- A CALENDAR EVENT to schedule (if they mention something time-specific, recurring, or need a reminder)
+WHEN TO GENERATE SUGGESTIONS - Create a suggestion when user:
+- States a goal they want to achieve (e.g., "I want to run a marathon", "I have a long term goal to reach 100 hours")
+- Mentions a habit or routine they want to build (e.g., "I should exercise daily", "I want to meditate every morning")
+- Describes a one-time activity or event (e.g., "I want to go hiking next Saturday")
+- Specifies days/times for a recurring activity (e.g., "I want to go to the gym on Wednesday, Friday and Sunday")
+- Expresses an intention or plan (e.g., "I'm planning to learn Python", "I need to finish this project")
+
+WHEN NOT TO GENERATE - Return null only if:
+- User is asking a pure information question with NO stated goal (e.g., "What's a good way to...?" or "How do I...?" ALONE - but if they say "I want to X, how should I...?" then DO generate)
+- User is making small talk or casual conversation with no actionable intent
+- User is providing feedback or just chatting without expressing any goal/plan
+
+Note: Even if a user asks a follow-up question, if they've stated a goal/plan/schedule FIRST, generate a suggestion for that goal/plan.
+
+CRITICAL: Match suggestion type to what the user explicitly said:
+- If user says "I want to go to gym every Sunday evening" -> MUST be EVENT type with recurring:weekly and recurringDays:[0] (Sunday=0), NOT a daily goal
+- If user says "I want to hike every Saturday morning" -> MUST be EVENT type with recurring:weekly and recurringDays:[6] (Saturday=6), NOT a daily goal
+- If user says "I want to make a homemade meal every Wednesday" -> MUST be EVENT type with recurring:weekly and recurringDays:[3] (Wednesday=3)
+- If user says "I should exercise daily" -> DAILY_GOAL type (no specific day mentioned)
+- If user says "I want to go to the gym on Wednesday, Friday and Sunday" -> EVENT type with recurring:weekly and recurringDays:[3,5,0] (Wed=3, Fri=5, Sun=0)
+- If user says "I want to go to the gym on Wednesday, Friday and Sunday. What routine should I do?" -> EVENT type (still extract the event goal even though there's a question)
+- If user says "I want to run a marathon" -> LONGTERM_GOAL type
+- If user says "I have a long term goal to reach 100 hours of community service" -> LONGTERM_GOAL type
+- If user says "I have a meeting tomorrow at 3pm" -> EVENT type
+- If user says "I'm planning to learn Python" -> LONGTERM_GOAL type
+
+⚠️ RED FLAG PATTERNS - ALWAYS create EVENT, NEVER create DAILY_GOAL:
+- "every [day of week]" (every Monday, every Saturday, etc.)
+- "[day of week] [time]" (Monday morning, Friday evening, etc.)
+- "[day of week] at [time]" (Tuesday at 3pm, Sunday at 6am, etc.)
+- "every other [day]" or "[day]s" (every other Tuesday, Wednesdays, etc.)
+- "[number]x a week" (3x a week, twice a week, etc.)
+- "every [number] [time period]" (every 2 weeks, every month, etc.)
+- "on [day of week]" (on Mondays, on Fridays, etc.)
+
+If the user's message contains ANY of these patterns, the suggestion MUST be type: "event", NEVER type: "daily_goal"
+
+KEYWORD DETECTION (these signal EVENT, not DAILY_GOAL):
+- Day names: Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday
+- Time descriptors: morning, afternoon, evening, night, dawn, dusk
+- Frequency words: every, each, all, [number]x a week, weekly, monthly, biweekly
+- Prepositions: on, every, each, at (when with day/time)
+
+DECISION LOGIC - CHECK IN THIS ORDER:
+1. CHECK if message contains any RED FLAG PATTERN -> MUST be EVENT type
+2. SCAN for day-of-week keywords (Monday-Sunday) OR frequency keywords -> EVENT type
+3. SCAN for time keywords (morning, afternoon, evening) with day/frequency -> EVENT type (with time)
+4. IF NO day/time/frequency/pattern keywords -> check for daily habit language (e.g., "daily", "every day", "each day") -> DAILY_GOAL
+5. IF NO day/time/frequency -> check for aspirational language (e.g., "want to", "working towards", "goal") -> LONGTERM_GOAL
+
+EVENT DATE SELECTION:
+- If user explicitly mentioned a date/day (e.g., "next Monday", "this Friday", "tomorrow"), use that exact date
+- If user mentioned a recurring day (e.g., "every Monday"), use the next occurrence of that day
+- If user mentioned a context that implies timing (e.g., "I'm hosting friends", "I'm planning"), suggest the appropriate date:
+  * For social events, suggest the nearest available weekend or the specific day mentioned
+  * For fitness/habits, suggest next occurrence if specific day mentioned, otherwise suggest tomorrow or next week
+  * For work-related events, suggest the next business day
+- Always provide an eventDate even if user didn't specify one - choose the most contextually appropriate date
+
+Day-of-week numbers: Monday=1, Tuesday=2, Wednesday=3, Thursday=4, Friday=5, Saturday=6, Sunday=0
+
+EXAMPLE 1: User says "I want to hike every Saturday morning"
+-> RED FLAG: "every Saturday" + "morning" (time)
+-> MUST create EVENT (not daily goal!)
+-> type: "event"
+-> recurring: "weekly"
+-> recurringDays: [6] (Saturday=6)
+-> eventTime: "09:00" (morning)
+-> text: "hike"
+
+EXAMPLE 2: User says "I want to make a homemade meal every Wednesday"
+-> RED FLAG: "every Wednesday"
+-> MUST create EVENT (not daily goal!)
+-> type: "event"
+-> recurring: "weekly"
+-> recurringDays: [3] (Wednesday=3)
+-> text: "make a homemade meal"
+
+EXAMPLE 3: User says "I should read more every day"
+-> Contains "every day" -> STILL EVENT? NO - this is aspirational with frequency, likely DAILY_GOAL
+-> But if they say "I want to read at 8pm every day" -> EVENT type with recurring: daily
 
 Return ONLY valid JSON, no other text.`;
 
@@ -742,28 +864,141 @@ Return ONLY valid JSON, no other text.`;
       
       const suggestion = JSON.parse(jsonMatch[0]);
       
+      // POST-PROCESSING: Always check for red flag patterns, even if LLM returned null
+      // If user mentioned a specific day of week, FORCE event type
+      const dayNames = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+      const dayMap = { monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6, sunday: 0 };
+      
+      console.log(`🔍 Post-processing check: Message="${mostRecentUserMessage}"`);
+      console.log(`   Current suggestion type from LLM: ${suggestion.type}`);
+      
+      const hasRedFlagPattern = dayNames.some(day => {
+        const patterns = [
+          `every ${day}`,
+          `every\\s+${day}`,
+          `on ${day}`,
+          `${day}\\s+morning`,
+          `${day}\\s+afternoon`,
+          `${day}\\s+evening`,
+        ];
+        const matchedPattern = patterns.find(pattern => {
+          const regex = new RegExp(pattern, 'i');
+          const isMatch = regex.test(msgLower);
+          if (isMatch) {
+            console.log(`   ✓ Matched pattern: "${pattern}"`);
+          }
+          return isMatch;
+        });
+        return !!matchedPattern;
+      }) || msgLower.includes('every other') || /\d+x a week|twice a|twice a week|weekly|biweekly/.test(msgLower);
+      
+      console.log(`🔍 Red flag pattern detected: ${hasRedFlagPattern}`);
+      
+      // If red flag pattern detected, MUST create event (even if LLM said null or daily_goal)
+      if (hasRedFlagPattern) {
+        console.log(`⚠️ RED FLAG: User mentioned scheduled activity. Forcing EVENT type.`);
+        
+        // Extract day of week
+        let recurringDays = [];
+        for (const [day, num] of Object.entries(dayMap)) {
+          if (msgLower.includes(day)) {
+            console.log(`   Found day: ${day} (${num})`);
+            recurringDays.push(num);
+          }
+        }
+        
+        // Extract time if mentioned
+        let timeStr = '10:00'; // default
+        if (msgLower.includes('morning')) timeStr = '09:00';
+        else if (msgLower.includes('afternoon')) timeStr = '14:00';
+        else if (msgLower.includes('evening')) timeStr = '18:00';
+        else if (msgLower.includes('night')) timeStr = '20:00';
+        
+        suggestion.type = 'event';
+        // Use suggestion.text as-is from LLM (should be clean action text per prompt)
+        suggestion.recurring = 'weekly';
+        if (recurringDays.length > 0) {
+          suggestion.recurringDays = recurringDays;
+        }
+        suggestion.eventTime = timeStr;
+        suggestion.reasoning = `You mentioned doing this every ${Array.from(new Set(recurringDays.map(num => {
+          const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+          return days[num];
+        }))).join(' and ')} - creating as a recurring event.`;
+        
+        console.log(`   ✅ Generated suggestion: type=event, text="${suggestion.text}", recurring=weekly, days=${JSON.stringify(recurringDays)}, time=${timeStr}`);
+      }
+      
       if (!suggestion.type) {
-        console.log('💭 No actionable suggestion generated (type is null)');
+        console.log('💭 No actionable suggestion generated (type is null and no red flags)');
         return null;
+      }
+      
+      // If LLM returned daily_goal but we have red flags, correct it
+      if (hasRedFlagPattern && suggestion.type === 'daily_goal') {
+        console.log(`⚠️ CORRECTING: LLM said daily_goal but red flags detected. Forcing EVENT type.`);
+        
+        // Extract day of week
+        let recurringDays = [];
+        for (const [day, num] of Object.entries(dayMap)) {
+          if (msgLower.includes(day)) {
+            recurringDays.push(num);
+          }
+        }
+        
+        // Extract time if mentioned
+        let timeStr = '10:00'; // default
+        if (msgLower.includes('morning')) timeStr = '09:00';
+        else if (msgLower.includes('afternoon')) timeStr = '14:00';
+        else if (msgLower.includes('evening')) timeStr = '18:00';
+        else if (msgLower.includes('night')) timeStr = '20:00';
+        
+        suggestion.type = 'event';
+        suggestion.recurring = 'weekly';
+        if (recurringDays.length > 0) {
+          suggestion.recurringDays = recurringDays;
+        }
+        suggestion.eventTime = timeStr;
       }
       
       console.log(`✨ Generated AI suggestion: ${suggestion.type} - ${suggestion.text}`);
       
-      // Parse time for calendar events
-      let parsedTime = null;
-      if (suggestion.type === 'event') {
-        parsedTime = parseNaturalLanguageTime(suggestion.text);
+      // Build response based on suggestion type
+      let responseObj = {
+        reasoning: suggestion.reasoning,
+      };
+      
+      if (suggestion.type === 'daily_goal') {
+        responseObj.type = 'goal';
+        responseObj.goalType = 'daily';
+        responseObj.text = `${suggestion.text}?`;
+      } else if (suggestion.type === 'longterm_goal') {
+        responseObj.type = 'goal';
+        responseObj.goalType = 'longterm';
+        responseObj.text = `${suggestion.text}?`;
+      } else if (suggestion.type === 'event') {
+        // Parse time from both the user message and suggestion text for better context
+        // User message has the day/date info, suggestion text might have time-of-day
+        const parsedFromUser = parseNaturalLanguageTime(mostRecentUserMessage);
+        const parsedFromSuggestion = parseNaturalLanguageTime(suggestion.text);
+        
+        responseObj.type = 'event';
+        // Keep text clean - just the action, no "Schedule" prefix
+        responseObj.text = suggestion.recurring 
+          ? `${suggestion.text} (${suggestion.recurring})?`
+          : `${suggestion.text}?`;
+        // Use date from user message (has day references like "next monday"), time from suggestion
+        responseObj.eventDate = parsedFromUser?.date || parsedFromSuggestion?.date;
+        responseObj.eventTime = parsedFromSuggestion?.time || '10:00';
+        if (suggestion.recurring) {
+          responseObj.recurring = suggestion.recurring;
+        }
+        if (suggestion.recurringDays) {
+          responseObj.recurringDays = suggestion.recurringDays;
+        }
       }
       
-      return {
-        type: suggestion.type,
-        text: suggestion.type === 'goal' 
-          ? `Add Goal: ${suggestion.text}?`
-          : `Schedule: ${suggestion.text}?`,
-        context: `Reasoning: ${suggestion.reasoning}`,
-        eventDate: parsedTime?.date,
-        eventTime: parsedTime?.time,
-      };
+      return responseObj;
     } catch (parseError) {
       console.error('❌ Failed to parse suggestion response:', parseError, 'Response was:', responseText);
       return null;

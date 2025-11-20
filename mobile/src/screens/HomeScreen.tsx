@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useFocusEffect } from "@react-navigation/native";
 import { useAuth } from "../context/AuthContext";
 import { StackScreenProps } from "@react-navigation/stack";
 import { RootStackParamList } from "../navigation/AppNavigator";
@@ -24,6 +25,8 @@ interface Goal {
   completed: boolean;
   priority: string;
   category: string;
+  type: 'daily' | 'longterm';
+  lastCompletedDate?: string;
 }
 
 interface CalendarEvent {
@@ -35,6 +38,9 @@ interface CalendarEvent {
   title?: string;
   description?: string;
   time?: string;
+  recurring?: string | null; // 'daily', 'weekly', 'biweekly', 'monthly', 'yearly'
+  recurringDays?: string | null; // JSON array string like "[1,3,5]"
+  recurringEndDate?: string | null;
 }
 
 interface DayEvents {
@@ -62,7 +68,8 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   const { user } = useAuth();
   const userInitial = user?.name?.charAt(0).toUpperCase() || "U";
   const [goals, setGoals] = useState<Goal[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [intentions, setIntentions] = useState<Goal[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
   const [events, setEvents] = useState<DayEvents>({});
   
   // Get actual current date information
@@ -77,69 +84,164 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   // Calculate number of days in current month
   const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
   
+  // Get the starting day of the week for the first day of the month (0 = Sunday, 6 = Saturday)
+  const firstDayOfMonth = new Date(currentYear, currentMonth, 1).getDay();
+  
   const [selectedDay, setSelectedDay] = useState(todayDate); // Default to today
 
-  useEffect(() => {
-    fetchGoals();
-    fetchEvents();
-  }, [user?.id]);
+  const checkAndResetDailyGoals = () => {
+    const today = new Date().toISOString().split('T')[0];
+    
+    setGoals(currentGoals =>
+      currentGoals.map(goal => {
+        // If it's a daily goal and it wasn't completed today, reset it
+        if (goal.type === 'daily' && goal.lastCompletedDate !== today) {
+          return { ...goal, completed: false };
+        }
+        return goal;
+      })
+    );
+  };
 
   const fetchGoals = async () => {
     if (!user?.id) {
       console.log("No user ID available");
       return;
     }
-    
+
     try {
-      setIsLoading(true);
       const token = await AsyncStorage.getItem("@user_token");
-      const url = `${SERVICE_URL}/api/goals`;
-      console.log("Fetching goals from:", url);
       
-      const response = await fetch(url, {
+      if (!token) {
+        console.warn("No authentication token found");
+        return;
+      }
+
+      const response = await fetch(`${SERVICE_URL}/api/goals`, {
         headers: {
-          "Authorization": `Bearer ${token}`,
+          Authorization: `Bearer ${token}`,
         },
       });
+
+      if (!response.ok) {
+        console.error("Failed to fetch goals:", response.status);
+        return;
+      }
+
+      const result = await response.json();
       
-      console.log("Goals response status:", response.status);
-      
-      if (response.ok) {
-        const data = await response.json();
-        console.log("Goals response data:", data);
+      if (result.success && result.data) {
+        // Separate goals by type
+        const dailyGoals = result.data.filter((goal: Goal) => goal.type === 'daily');
+        const longtermGoals = result.data.filter((goal: Goal) => goal.type === 'longterm');
         
-        if (data.success && data.data) {
-          // Sort goals: incomplete first, then by priority
-          const sortedGoals = data.data.sort((a: Goal, b: Goal) => {
-            // Prioritize incomplete goals
-            if (a.completed !== b.completed) {
-              return a.completed ? 1 : -1;
-            }
-            // Then by priority (high > medium > low)
-            const priorityOrder: { [key: string]: number } = {
-              high: 0,
-              medium: 1,
-              low: 2,
-            };
-            return (priorityOrder[a.priority] || 2) - (priorityOrder[b.priority] || 2);
-          });
-          // Only show first 5 goals
-          console.log("Sorted goals:", sortedGoals);
-          setGoals(sortedGoals.slice(0, 5));
-        } else {
-          console.log("No success or data in response");
-          setGoals([]);
-        }
-      } else {
-        const errorData = await response.text();
-        console.error("Goals fetch failed:", response.status, errorData);
-        setGoals([]);
+        setGoals(dailyGoals);
+        setIntentions(longtermGoals);
+        
+        console.log(`✓ Fetched ${dailyGoals.length} daily goals and ${longtermGoals.length} long-term goals`);
       }
     } catch (error) {
       console.error("Error fetching goals:", error);
-      setGoals([]);
-    } finally {
-      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    // Fetch goals from backend
+    fetchGoals();
+    
+    // Check and reset daily goals
+    checkAndResetDailyGoals();
+    
+    // Fetch calendar events
+    fetchEvents();
+  }, [user?.id]);
+
+  // Refresh data when returning to this screen from navigation
+  useFocusEffect(
+    React.useCallback(() => {
+      console.log('📱 Home screen focused - refreshing all widgets...');
+      fetchGoals();
+      checkAndResetDailyGoals();
+      fetchEvents();
+      return () => {
+        // Cleanup if needed
+      };
+    }, [user?.id])
+  );
+
+  const toggleGoalCompletion = async (goalId: string, currentStatus: boolean) => {
+    // Update local state immediately
+    const today = new Date().toISOString().split('T')[0];
+    
+    setGoals(
+      goals.map((goal) =>
+        goal.id === goalId 
+          ? { 
+              ...goal, 
+              completed: !currentStatus,
+              lastCompletedDate: !currentStatus ? today : goal.lastCompletedDate
+            } 
+          : goal
+      )
+    );
+
+    // Update on backend
+    try {
+      const token = await AsyncStorage.getItem("@user_token");
+      if (!token) return;
+
+      const updatedGoal = goals.find(g => g.id === goalId);
+      if (!updatedGoal) return;
+
+      const response = await fetch(`${SERVICE_URL}/api/goals/${goalId}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          completed: !currentStatus,
+          lastCompletedDate: !currentStatus ? today : updatedGoal.lastCompletedDate,
+        }),
+      });
+
+      if (!response.ok) {
+        console.error("Failed to update goal on backend:", response.status);
+      }
+    } catch (error) {
+      console.error("Error updating goal:", error);
+    }
+  };
+
+  const toggleIntentionCompletion = async (intentionId: string, currentStatus: boolean) => {
+    // Update local state immediately
+    setIntentions(
+      intentions.map((intention) =>
+        intention.id === intentionId ? { ...intention, completed: !currentStatus } : intention
+      )
+    );
+
+    // Update on backend
+    try {
+      const token = await AsyncStorage.getItem("@user_token");
+      if (!token) return;
+
+      const response = await fetch(`${SERVICE_URL}/api/goals/${intentionId}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          completed: !currentStatus,
+        }),
+      });
+
+      if (!response.ok) {
+        console.error("Failed to update intention on backend:", response.status);
+      }
+    } catch (error) {
+      console.error("Error updating intention:", error);
     }
   };
 
@@ -174,26 +276,40 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         console.log("Events response data:", data);
 
         if (data.success && data.data) {
-          // Organize events by day
+          // Organize events by day, including recurring events
           const eventsByDay: DayEvents = {};
+          
           data.data.forEach((event: CalendarEvent) => {
-            // Extract day from the event's date field (format: "2025-11-20T00:00:00.000Z")
-            let day: number;
+            // Parse date correctly to avoid timezone issues
+            // Extract just the date part (YYYY-MM-DD) and parse it in local timezone
+            let dayNumber: number;
             
             if (event.date) {
-              // Parse the date string directly to get the day
-              const dateString = event.date.split('T')[0]; // "2025-11-20"
-              day = parseInt(dateString.split('-')[2], 10); // Extract "20"
+              // Extract date string from ISO format (e.g., "2025-11-20" from "2025-11-20T00:00:00.000Z")
+              const dateString = event.date.split('T')[0]; // Get YYYY-MM-DD
+              const [year, month, day] = dateString.split('-').map(Number);
+              dayNumber = day;
             } else {
-              // Fallback to createdAt
-              const eventDate = new Date(event.createdAt);
-              day = eventDate.getDate();
+              const baseDate = new Date(event.createdAt);
+              dayNumber = baseDate.getDate();
             }
             
-            if (!eventsByDay[day]) {
-              eventsByDay[day] = [];
+            // If this is a recurring event, generate instances for this month
+            if (event.recurring) {
+              const instances = generateRecurringInstances(event, currentMonth, currentYear);
+              instances.forEach(instanceDay => {
+                if (!eventsByDay[instanceDay]) {
+                  eventsByDay[instanceDay] = [];
+                }
+                eventsByDay[instanceDay].push(event);
+              });
+            } else {
+              // One-time event - just add to its day
+              if (!eventsByDay[dayNumber]) {
+                eventsByDay[dayNumber] = [];
+              }
+              eventsByDay[dayNumber].push(event);
             }
-            eventsByDay[day].push(event);
           });
 
           setEvents(eventsByDay);
@@ -208,29 +324,94 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     }
   };
 
-  const toggleGoalCompletion = async (goalId: string, currentStatus: boolean) => {
-    try {
-      const token = await AsyncStorage.getItem("@user_token");
-      const response = await fetch(`${SERVICE_URL}/api/goals/${goalId}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`,
-        },
-        body: JSON.stringify({ completed: !currentStatus }),
-      });
-
-      if (response.ok) {
-        // Update local state
-        setGoals(
-          goals.map((goal) =>
-            goal.id === goalId ? { ...goal, completed: !currentStatus } : goal
-          )
-        );
-      }
-    } catch (error) {
-      console.error("Error updating goal:", error);
+  /**
+   * Generate recurring event instances for the current month
+   * Returns an array of day numbers (1-31) where the event occurs
+   */
+  const generateRecurringInstances = (event: CalendarEvent, month: number, year: number): number[] => {
+    const instances: number[] = [];
+    
+    if (!event.recurring) return instances;
+    
+    // Get the start date of the event
+    const startDate = event.date ? new Date(event.date) : new Date(event.createdAt);
+    const startDay = startDate.getDate();
+    
+    // Get the last day of the current month
+    const lastDayOfMonth = new Date(year, month + 1, 0).getDate();
+    
+    // Get end date for recurring event (if specified)
+    const endDate = event.recurringEndDate ? new Date(event.recurringEndDate) : null;
+    
+    // Check if we're still within the recurring end date
+    const currentMonthStart = new Date(year, month, 1);
+    if (endDate && currentMonthStart > endDate) {
+      return instances; // No instances if we're past the end date
     }
+    
+    switch (event.recurring) {
+      case 'daily':
+        // Add event to every day of the month
+        for (let day = 1; day <= lastDayOfMonth; day++) {
+          if (!endDate || new Date(year, month, day) <= endDate) {
+            instances.push(day);
+          }
+        }
+        break;
+        
+      case 'weekly':
+        // Parse recurringDays to get the days of week (0-6)
+        let daysOfWeek: number[] = [startDate.getDay()]; // Default to the start date's day
+        if (event.recurringDays) {
+          try {
+            daysOfWeek = JSON.parse(event.recurringDays);
+          } catch (e) {
+            console.warn("Failed to parse recurringDays:", event.recurringDays);
+          }
+        }
+        
+        // Add events for each specified day of week in the month
+        for (let day = 1; day <= lastDayOfMonth; day++) {
+          const dateObj = new Date(year, month, day);
+          if (daysOfWeek.includes(dateObj.getDay())) {
+            if (!endDate || dateObj <= endDate) {
+              instances.push(day);
+            }
+          }
+        }
+        break;
+        
+      case 'biweekly':
+        // Add event every 2 weeks from the start date
+        let dayCounter = startDay;
+        while (dayCounter <= lastDayOfMonth) {
+          if (!endDate || new Date(year, month, dayCounter) <= endDate) {
+            instances.push(dayCounter);
+          }
+          dayCounter += 14;
+        }
+        break;
+        
+      case 'monthly':
+        // Add event on the same day of each month
+        if (startDay <= lastDayOfMonth) {
+          if (!endDate || new Date(year, month, startDay) <= endDate) {
+            instances.push(startDay);
+          }
+        }
+        break;
+        
+      case 'yearly':
+        // Add event on the same date yearly (same month and day)
+        if (startDate.getMonth() === month && startDay <= lastDayOfMonth) {
+          if (!endDate || new Date(year, month, startDay) <= endDate) {
+            instances.push(startDay);
+          }
+        }
+        break;
+    }
+    
+    return instances.sort((a, b) => a - b);
   };
 
   return (
@@ -274,6 +455,36 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
                   ]}
                 >
                   {goal.text}
+                </Text>
+              </View>
+            </View>
+          ))
+        )}
+      </View>
+
+      {/* Intentions */}
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Milestones</Text>
+
+        {intentions.length === 0 ? (
+          <Text style={styles.emptyStateText}>No milestones yet. Add one to get started!</Text>
+        ) : (
+          intentions.map((intention) => (
+            <View key={intention.id} style={styles.goalItem}>
+              <View style={styles.goalRow}>
+                <TouchableOpacity
+                  style={styles.checkbox}
+                  onPress={() => toggleIntentionCompletion(intention.id, intention.completed)}
+                >
+                  {intention.completed && <Text style={styles.checkmark}>✓</Text>}
+                </TouchableOpacity>
+                <Text
+                  style={[
+                    styles.goalTitle,
+                    intention.completed && styles.goalTitleCompleted,
+                  ]}
+                >
+                  {intention.text}
                 </Text>
               </View>
             </View>
@@ -344,6 +555,15 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         </View>
 
         <View style={styles.calendarGrid}>
+          {/* Empty cells for days before the month starts */}
+          {[...Array(firstDayOfMonth)].map((_, i) => (
+            <View
+              key={`empty-${i}`}
+              style={styles.dayCell}
+            />
+          ))}
+          
+          {/* Actual day cells */}
           {[...Array(daysInMonth)].map((_, i) => {
             const day = i + 1;
             const isToday = day === todayDate;
@@ -355,7 +575,8 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
                 key={`day-${day}`}
                 style={[
                   styles.dayCell,
-                  isToday && styles.todayCell,
+                  isToday && isSelected && styles.todayCell,
+                  isToday && !isSelected && styles.todayInactiveCell,
                   isSelected && !isToday && styles.selectedDayCell,
                 ]}
                 onPress={() => setSelectedDay(day)}
@@ -385,7 +606,18 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
               {events[selectedDay].map((event) => (
                 <View key={event.id} style={styles.eventItem}>
                   <View style={styles.eventContent}>
-                    <Text style={styles.eventText}>{event.title}</Text>
+                    <View style={styles.eventHeader}>
+                      <Text style={styles.eventText}>{event.title}</Text>
+                      {event.recurring && (
+                        <Text style={styles.recurringBadge}>
+                          {event.recurring === 'daily' ? '📅 Daily' : 
+                           event.recurring === 'weekly' ? '📅 Weekly' :
+                           event.recurring === 'biweekly' ? '📅 Bi-weekly' :
+                           event.recurring === 'monthly' ? '📅 Monthly' :
+                           event.recurring === 'yearly' ? '📅 Yearly' : '📅 Recurring'}
+                        </Text>
+                      )}
+                    </View>
                     <Text style={styles.eventType}>{event.time}</Text>
                   </View>
                 </View>
@@ -483,14 +715,16 @@ const styles = StyleSheet.create({
     textAlign: "center",
     color: "#666",
     fontSize: 12,
+    paddingVertical: 4,
   },
   calendarGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "space-between",
+    marginBottom: -50
   },
   dayCell: {
-    width: `${100 / 7 - 2}%`,
+    width: `${100 / 7}%`,
     aspectRatio: 1,
     justifyContent: "center",
     alignItems: "center",
@@ -499,6 +733,9 @@ const styles = StyleSheet.create({
   },
   todayCell: {
     backgroundColor: "#0066cc",
+  },
+  todayInactiveCell: {
+    backgroundColor: "#333",
   },
   dayText: {
     color: "#999",
@@ -690,10 +927,24 @@ const styles = StyleSheet.create({
   eventContent: {
     flex: 1,
   },
+  eventHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 4,
+  },
   eventText: {
     color: "#fff",
     fontSize: 13,
-    marginBottom: 2,
+    marginBottom: 0,
+  },
+  recurringBadge: {
+    color: "#0099ff",
+    fontSize: 10,
+    fontWeight: "600",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 3,
   },
   eventType: {
     color: "#999",

@@ -129,6 +129,7 @@ export default function ChatScreen({ navigation }: ChatScreenProps) {
               text: suggestion.text.replace("Add Goal: ", "").replace("?", ""),
               category: "AI Suggested",
               priority: "medium",
+              type: (suggestion as any).goalType || "daily", // Include goalType from suggestion
             }
           : {
               userId: user.id,
@@ -138,6 +139,8 @@ export default function ChatScreen({ navigation }: ChatScreenProps) {
               type: "AI Suggested",
               date: (suggestion as any).eventDate,
               time: (suggestion as any).eventTime,
+              recurring: (suggestion as any).recurring,
+              recurringDays: (suggestion as any).recurringDays,
             };
 
       const response = await fetch(`${SERVICE_URL}${endpoint}`, {
@@ -419,7 +422,9 @@ export default function ChatScreen({ navigation }: ChatScreenProps) {
           <View style={styles.suggestionCard}>
             <View style={styles.suggestionHeader}>
               <Text style={styles.suggestionBadge}>
-                {suggestion.type === "goal" ? "💡 Goal" : "📅 Event"}
+                {suggestion.type === "goal" 
+                  ? `💡 ${(suggestion as any).goalType === "longterm" ? "Long-Term Goal" : "Daily Goal"}`
+                  : "📅 Event"}
               </Text>
               <TouchableOpacity
                 onPress={() => setSuggestion(null)}
@@ -435,7 +440,9 @@ export default function ChatScreen({ navigation }: ChatScreenProps) {
                 onPress={() => handleAddSuggestion(suggestion)}
               >
                 <Text style={styles.suggestionButtonText}>
-                  {suggestion.type === "goal" ? "Add Goal" : "Schedule Event"}
+                  {suggestion.type === "goal" 
+                    ? `Add ${(suggestion as any).goalType === "longterm" ? "Long-Term" : "Daily"} Goal`
+                    : "Schedule Event"}
                 </Text>
               </TouchableOpacity>
             </View>

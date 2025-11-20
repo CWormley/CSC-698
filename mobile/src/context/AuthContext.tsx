@@ -78,6 +78,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       // Call real authentication API
       const loginUrl = `${SERVICE_URL}/api/auth/login`;
       console.log('Attempting login to:', loginUrl);
+      console.log('SERVICE_URL:', SERVICE_URL);
       
       const response = await fetch(loginUrl, {
         method: 'POST',
@@ -106,9 +107,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       console.error('Sign in failed - Response:', data);
       console.error('Sign in failed - Error:', data.error || 'Unknown error');
       return false;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Sign in network error:', error);
       console.error('Sign in error message:', (error as Error).message);
+      console.error('Sign in error code:', error.code || 'no code');
+      console.error('Sign in error name:', error.name || 'unnamed error');
+      console.error('Sign in full error:', JSON.stringify(error));
       return false;
     } finally {
       setIsLoading(false);
@@ -120,7 +124,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setIsLoading(true);
       
       // Call real registration API
-      const response = await fetch(`${SERVICE_URL}/api/auth/register`, {
+      const registerUrl = `${SERVICE_URL}/api/auth/register`;
+      console.log('Attempting signup to:', registerUrl);
+      console.log('SERVICE_URL:', SERVICE_URL);
+      
+      const response = await fetch(registerUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -144,8 +152,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       // Log error for debugging
       console.error('Sign up failed:', data.error || 'Unknown error');
       return false;
-    } catch (error) {
-      console.error('Sign up error:', error);
+    } catch (error: any) {
+      console.error('Sign up network error:', error);
+      console.error('Sign up error message:', (error as Error).message);
+      console.error('Sign up error code:', error.code || 'no code');
+      console.error('Sign up error name:', error.name || 'unnamed error');
+      console.error('Sign up full error:', JSON.stringify(error));
       return false;
     } finally {
       setIsLoading(false);

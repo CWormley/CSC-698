@@ -327,6 +327,8 @@ export const goalService = {
         text: goalData.text,
         category: goalData.category || 'general',
         priority: goalData.priority || 'medium',
+        type: goalData.type || 'daily',
+        lastCompletedDate: goalData.lastCompletedDate ? new Date(goalData.lastCompletedDate) : null,
       },
       include: {
         user: { select: { id: true, name: true, email: true } },
@@ -422,6 +424,9 @@ export const calendarEventService = {
         date,
         time,
         description: eventData.description,
+        recurring: eventData.recurring || null, // "daily", "weekly", "biweekly", "monthly", "yearly"
+        recurringDays: eventData.recurringDays || null, // JSON array string for weekly recurrence
+        recurringEndDate: eventData.recurringEndDate ? new Date(eventData.recurringEndDate) : null,
       },
       include: {
         user: { select: { id: true, name: true, email: true } },

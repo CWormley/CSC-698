@@ -67,7 +67,7 @@ router.get('/:id', async (req, res) => {
 // POST /api/calendar - Create new calendar event
 router.post('/', authenticateToken, async (req, res) => {
   try {
-    const { title, type = 'event', date, time, description } = req.body;
+    const { title, type = 'event', date, time, description, recurring, recurringDays, recurringEndDate } = req.body;
     const userId = req.user.id;
     
     if (!title) {
@@ -83,6 +83,30 @@ router.post('/', authenticateToken, async (req, res) => {
       });
     }
     
+    // Validate recurring pattern if provided
+    const validRecurringTypes = ['daily', 'weekly', 'biweekly', 'monthly', 'yearly'];
+    if (recurring && !validRecurringTypes.includes(recurring)) {
+      return res.status(400).json({ 
+        error: `Invalid recurring type. Must be one of: ${validRecurringTypes.join(', ')}` 
+      });
+    }
+    
+    // Validate recurringDays if provided (should be array of 0-6)
+    if (recurringDays) {
+      try {
+        const days = typeof recurringDays === 'string' ? JSON.parse(recurringDays) : recurringDays;
+        if (!Array.isArray(days) || !days.every(d => typeof d === 'number' && d >= 0 && d <= 6)) {
+          return res.status(400).json({ 
+            error: 'recurringDays must be a JSON array of numbers 0-6 (e.g., [1,3,5] for Mon/Wed/Fri)' 
+          });
+        }
+      } catch (e) {
+        return res.status(400).json({ 
+          error: 'recurringDays must be valid JSON array' 
+        });
+      }
+    }
+    
     const event = await calendarEventService.create({
       userId,
       title,
@@ -90,9 +114,12 @@ router.post('/', authenticateToken, async (req, res) => {
       date,
       time,
       description,
+      recurring: recurring || null,
+      recurringDays: recurringDays ? (typeof recurringDays === 'string' ? recurringDays : JSON.stringify(recurringDays)) : null,
+      recurringEndDate,
     });
     
-    console.log(`📅 Calendar event created for user ${userId}: "${title}" on ${date}${time ? ` at ${time}` : ''}`);
+    console.log(`📅 Calendar event created for user ${userId}: "${title}" on ${date}${time ? ` at ${time}` : ''}${recurring ? ` (recurring: ${recurring})` : ''}`);
     res.status(201).json({ success: true, data: event });
   } catch (error) {
     console.error('Error creating calendar event:', error);
@@ -103,7 +130,7 @@ router.post('/', authenticateToken, async (req, res) => {
 // PUT /api/calendar/:id - Update calendar event
 router.put('/:id', authenticateToken, async (req, res) => {
   try {
-    const { title, type, date, time, description, completed } = req.body;
+    const { title, type, date, time, description, completed, recurring, recurringDays, recurringEndDate } = req.body;
     const userId = req.user.id;
     
     const event = await calendarEventService.getById(req.params.id);
@@ -127,6 +154,30 @@ router.put('/:id', authenticateToken, async (req, res) => {
       }
     }
     
+    // Validate recurring pattern if provided
+    const validRecurringTypes = ['daily', 'weekly', 'biweekly', 'monthly', 'yearly'];
+    if (recurring && !validRecurringTypes.includes(recurring)) {
+      return res.status(400).json({ 
+        error: `Invalid recurring type. Must be one of: ${validRecurringTypes.join(', ')}` 
+      });
+    }
+    
+    // Validate recurringDays if provided
+    if (recurringDays) {
+      try {
+        const days = typeof recurringDays === 'string' ? JSON.parse(recurringDays) : recurringDays;
+        if (!Array.isArray(days) || !days.every(d => typeof d === 'number' && d >= 0 && d <= 6)) {
+          return res.status(400).json({ 
+            error: 'recurringDays must be a JSON array of numbers 0-6 (e.g., [1,3,5] for Mon/Wed/Fri)' 
+          });
+        }
+      } catch (e) {
+        return res.status(400).json({ 
+          error: 'recurringDays must be valid JSON array' 
+        });
+      }
+    }
+    
     const updated = await calendarEventService.update(req.params.id, {
       title,
       type,
@@ -134,6 +185,9 @@ router.put('/:id', authenticateToken, async (req, res) => {
       time,
       description,
       completed,
+      recurring,
+      recurringDays: recurringDays ? (typeof recurringDays === 'string' ? recurringDays : JSON.stringify(recurringDays)) : undefined,
+      recurringEndDate,
     });
     
     res.json({ success: true, data: updated });
